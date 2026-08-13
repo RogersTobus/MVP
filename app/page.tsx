@@ -68,15 +68,17 @@ function BlogImage({ image, alt }: { image: ContentImage; alt: string }) {
 function NaverStylePreview({ content }: { content: Content }) {
   const coverImages = (content.images || []).filter((image) => image.placementOrder < 0);
   const headingTypes = new Set(["problem", "core", "case", "product", "faq"]);
+  const internalLabels = new Set(["도입", "공감", "문제 제기", "핵심 정보", "사례", "제품 소개", "결론", "CTA", "자유 블록"]);
   return <article className="naver-post-preview">
-    <div className="naver-post-head"><h1>{content.title}</h1><p>{content.summary}</p></div>
+    <div className="naver-post-head"><h1>{content.title}</h1></div>
     {coverImages.map((image) => <BlogImage key={image.id} image={image} alt={`${content.title} 대표 이미지`} />)}
     <div className="naver-post-body">{content.blocks.map((block, index) => {
       if (block.type === "image") {
         const images = (content.images || []).filter((image) => image.placementOrder === (block.sortOrder ?? index));
         return images.length ? <div className="naver-image-group" key={block.id || index}>{images.map((image) => <BlogImage key={image.id} image={image} alt={`${block.label} 이미지`} />)}</div> : null;
       }
-      return <section key={block.id || index}>{headingTypes.has(block.type) && <h2>{block.label}</h2>}<BlogText text={block.text || ""} /></section>;
+      const showHeading = headingTypes.has(block.type) && !internalLabels.has(block.label.trim());
+      return <section key={block.id || index}>{showHeading && <h2>{block.label}</h2>}<BlogText text={block.text || ""} /></section>;
     })}</div>
   </article>;
 }

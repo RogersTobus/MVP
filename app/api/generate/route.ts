@@ -47,7 +47,7 @@ export async function POST(request: Request) {
         imageInstructions: String(body.imageInstructions || "").trim(),
         imageReferences: JSON.stringify(imageReferences),
         imageReferenceSources: JSON.stringify(imageReferenceSources),
-        blocks: { create: input.blocks.map((block, index) => ({ ...block, text: formattedBlocks[index]?.text || "", sortOrder: index })) },
+        blocks: { create: input.blocks.map((block, index) => ({ ...block, label: formattedBlocks[index]?.label?.trim() || block.label, text: formattedBlocks[index]?.text || "", sortOrder: index })) },
       },
       include: contentInclude,
     });

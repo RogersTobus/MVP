@@ -129,9 +129,9 @@ th { padding: 13px 18px; background: #f7f8fa; color: #8b95a1; border-color: #edf
 .preview-mode-switch { display: flex; justify-content: flex-end; gap: 4px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid #edf0f2; }
 .preview-mode-switch button { padding: 8px 11px; border: 0; border-radius: 9px; background: #f2f4f6; color: #8b95a1; font-size: 10px; font-weight: 700; }.preview-mode-switch button.active { background: #eaf3ff; color: #2272eb; }
 .naver-post-preview { width: min(720px, 100%); margin: 0 auto; padding: 18px 18px 55px; color: #333d4b; }
-.naver-post-head { padding: 12px 0 32px; text-align: center; }.naver-post-head h1 { margin: 0; color: #191f28; font-size: clamp(25px, 3.2vw, 34px); line-height: 1.38; letter-spacing: -1.2px; }.naver-post-head > p { max-width: 620px; margin: 18px auto 0; color: #6b7684; font-size: 14px; line-height: 1.85; }
+.naver-post-head { padding: 12px 0 38px; text-align: left; }.naver-post-head h1 { margin: 0; color: #191f28; font-size: clamp(25px, 3.2vw, 34px); line-height: 1.38; letter-spacing: -1.2px; }
 .naver-post-body { padding-top: 10px; }.naver-post-body section { margin: 0; padding: 20px 0; }.naver-post-body h2 { margin: 12px 0 26px; color: #191f28; font-size: 21px; line-height: 1.45; letter-spacing: -.7px; text-align: center; }
-.naver-post-body p { margin: 0 0 25px; color: #333d4b; font-size: 16px; line-height: 2.05; letter-spacing: -.22px; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }.naver-post-body p.emoji-break { margin-block: 35px; font-size: 29px; line-height: 1; text-align: center; letter-spacing: 4px; }
+.naver-post-body p { max-width: 650px; margin: 0 auto 24px; color: #333d4b; font-size: 16px; line-height: 1.95; letter-spacing: -.22px; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }.naver-post-body p.emoji-break { width: fit-content; margin-block: 38px; padding: 14px 18px; border-radius: 24px; background: #f3f8ff; font-size: 30px; line-height: 1; text-align: center; letter-spacing: 3px; }
 .naver-image { margin: 28px auto 36px; }.naver-image img { display: block; width: 100%; height: auto; border-radius: 4px; background: #f2f4f6; }.naver-image-group { margin-block: 12px 35px; }.naver-image-group .naver-image { margin-block: 18px; }
 @media (max-width: 760px) { .image-grid { grid-template-columns: 1fr; } }
 

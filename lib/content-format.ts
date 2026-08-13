@@ -13,20 +13,10 @@ export function formatBlogBlockText(value: string) {
     if (!lines.length) return [];
     if (lines.some((line) => listLine.test(line))) return [lines.join("\n")];
 
-    const sentences = sentenceChunks(lines.join(" "));
-    if (sentences.length <= 2) return [sentences.join(" ")];
+    // Keep deliberate short-line rhythm from the model instead of flattening it.
+    if (lines.length > 1 && lines.every((line) => line.length <= 48)) return lines;
 
-    const groups: string[] = [];
-    let current: string[] = [];
-    for (const sentence of sentences) {
-      const nextLength = [...current, sentence].join(" ").length;
-      if (current.length >= 2 || (current.length > 0 && nextLength > 150)) {
-        groups.push(current.join(" "));
-        current = [];
-      }
-      current.push(sentence);
-    }
-    if (current.length) groups.push(current.join(" "));
-    return groups;
+    const sentences = sentenceChunks(lines.join(" "));
+    return sentences;
   }).join("\n\n");
 }
