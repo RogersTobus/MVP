@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { mkdir } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { db, getContentImages, parseImageReferences } from "@/lib/db";
 import { CodexImageCliAdapter } from "@/lib/images/codex-image-cli";
 import { collectNaverImageReferences } from "@/lib/references/naver-image-search";
+import { curateImageReferences } from "@/lib/references/codex-reference-curator";
 
 export const runtime = "nodejs";
 export const maxDuration = 600;
@@ -27,8 +28,27 @@ export async function POST(request: Request) {
   let referenceUrls = parseImageReferences(content.imageReferences).filter((url) => existsSync(path.join(process.cwd(), "public", "references", path.basename(url))));
   if (settings.autoWebReferences && batchIndex === 0 && referenceUrls.length < 5) {
     try {
-      const webReferences = await collectNaverImageReferences({ topic: content.topic, debugUrl: settings.chromeDebugUrl, limit: Math.min(3, 5 - referenceUrls.length) });
-      referenceUrls = [...new Set([...referenceUrls, ...webReferences])].slice(0, 5);
+      const webCandidates = await collectNaverImageReferences({ topic: content.topic, debugUrl: settings.chromeDebugUrl, limit: 20 });
+      const candidatePaths = webCandidates.map((url) => path.join(process.cwd(), "public", "references", path.basename(url)));
+      let selectedPaths: string[] = [];
+      try {
+        selectedPaths = await curateImageReferences({
+          command: settings.cliCommand,
+          extraArgs: settings.cliExtraArgs,
+          topic: content.topic,
+          title: content.title,
+          categoryName: content.category.name,
+          candidatePaths,
+          limit: 5 - referenceUrls.length,
+        });
+      } catch (error) {
+        console.warn("[web-image-reference] AI 선별 실패, 검색 순서 기준으로 대체합니다.", error);
+        selectedPaths = candidatePaths.slice(0, 5 - referenceUrls.length);
+      }
+      const selectedSet = new Set(selectedPaths.map((candidate) => path.resolve(candidate)));
+      await Promise.all(candidatePaths.filter((candidate) => !selectedSet.has(path.resolve(candidate))).map((candidate) => unlink(candidate).catch(() => undefined)));
+      const selectedUrls = selectedPaths.map((candidate) => `/references/${path.basename(candidate)}`);
+      referenceUrls = [...new Set([...referenceUrls, ...selectedUrls])].slice(0, 5);
       await db.content.update({ where: { id: content.id }, data: { imageReferences: JSON.stringify(referenceUrls) } });
     } catch (error) {
       console.warn("[web-image-reference] 자동 수집을 건너뜁니다.", error);

@@ -21,6 +21,10 @@ export async function collectNaverImageReferences(input: { topic: string; debugU
     const url = `https://search.naver.com/search.naver?where=image&sm=tab_jum&query=${encodeURIComponent(input.topic)}`;
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForTimeout(1800);
+    for (let index = 0; index < 3; index += 1) {
+      await page.mouse.wheel(0, 1400);
+      await page.waitForTimeout(450);
+    }
     const bodyText = await page.locator("body").innerText().catch(() => "");
     if (/captcha|자동입력 방지|보안 확인/i.test(bodyText)) throw new Error("검색 중 보안 확인이 표시되어 자동 수집을 중단했습니다.");
 
