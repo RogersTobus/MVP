@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import path from "node:path";
 import defaultGuides from "./default-guides.json";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
@@ -28,6 +29,7 @@ async function ensureGuidanceColumns() {
   try { await db.$executeRawUnsafe(`ALTER TABLE "Category" ADD COLUMN "imageMemory" TEXT NOT NULL DEFAULT ''`); } catch { /* Column already exists. */ }
   try { await db.$executeRawUnsafe(`ALTER TABLE "Content" ADD COLUMN "imageInstructions" TEXT NOT NULL DEFAULT ''`); } catch { /* Column already exists. */ }
   try { await db.$executeRawUnsafe(`ALTER TABLE "Content" ADD COLUMN "imageReferences" TEXT NOT NULL DEFAULT '[]'`); } catch { /* Column already exists. */ }
+  try { await db.$executeRawUnsafe(`ALTER TABLE "Content" ADD COLUMN "imageReferenceSources" TEXT NOT NULL DEFAULT '[]'`); } catch { /* Column already exists. */ }
   try { await db.$executeRawUnsafe(`ALTER TABLE "AppSetting" ADD COLUMN "autoWebReferences" BOOLEAN NOT NULL DEFAULT true`); } catch { /* Column already exists. */ }
 }
 
@@ -46,6 +48,9 @@ export async function ensureSeed() {
       },
     });
   }
+  const medicalDepthRule = "[의료 정보 깊이] ‘병원에 문의하세요’, ‘상담을 받아보세요’로 설명을 대신하지 않습니다. 신뢰 가능한 자료를 바탕으로 원리, 검사 이유, 대상 판단 요소, 진행 과정, 회복, 한계와 주의사항을 독자가 이해할 만큼 먼저 설명하고, 의료진 확인 안내는 마지막에 짧게 덧붙입니다. 도입에서 핵심 답을 먼저 주고 용어 정의 → 작동 원리 → 기존 방식과의 차이 → 독자에게 갖는 의미 순서로 풉니다. 최신 장비나 빠른 속도를 더 좋은 결과와 동일시하지 않으며, 병원 자랑과 CTA가 정보 설명을 덮지 않게 합니다.";
+  const medicalCategories = await db.category.findMany({ where: { name: { in: ["병원 마케팅", "병원·진료 정보"] } } });
+  await Promise.all(medicalCategories.filter((category) => !category.memory.includes("[의료 정보 깊이]")).map((category) => db.category.update({ where: { id: category.id }, data: { memory: `${category.memory.trim()}\n${medicalDepthRule}` } })));
 }
 
 export const contentInclude = {
@@ -58,6 +63,36 @@ export function parseImageReferences(value: string) {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.startsWith("/references/")).slice(0, 5) : [];
   } catch { return []; }
+}
+
+export type ImageReferenceSource = {
+  url: string;
+  kind: "manual" | "web";
+  sourcePageUrl?: string;
+  originalImageUrl?: string;
+  title?: string;
+};
+
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try { return ["http:", "https:"].includes(new URL(value).protocol); } catch { return false; }
+}
+
+export function parseImageReferenceSources(value: string, references: string[]): ImageReferenceSource[] {
+  let parsed: unknown = [];
+  try { parsed = JSON.parse(value); } catch { /* Older content has no source metadata. */ }
+  const stored = Array.isArray(parsed) ? parsed : [];
+  return references.map((url) => {
+    const match = stored.find((item) => item && typeof item === "object" && (item as { url?: unknown }).url === url) as Record<string, unknown> | undefined;
+    const inferredKind = path.basename(url).startsWith("web-") ? "web" : "manual";
+    return {
+      url,
+      kind: match?.kind === "web" || match?.kind === "manual" ? match.kind : inferredKind,
+      ...(isHttpUrl(match?.sourcePageUrl) ? { sourcePageUrl: match.sourcePageUrl } : {}),
+      ...(isHttpUrl(match?.originalImageUrl) ? { originalImageUrl: match.originalImageUrl } : {}),
+      ...(typeof match?.title === "string" && match.title.trim() ? { title: match.title.trim().slice(0, 200) } : {}),
+    };
+  });
 }
 
 export type StoredContentImage = {

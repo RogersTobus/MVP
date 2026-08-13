@@ -6,9 +6,10 @@ type Category = { id: number; name: string; memory: string; imageMemory: string;
 type Block = { id?: number; type: string; label: string; instruction: string; text?: string; sortOrder?: number };
 type Template = { id: number; name: string; description: string; blocks: Block[] };
 type ContentImage = { id: number; contentId: number; prompt: string; url: string; style: string; placementOrder: number; createdAt: string };
+type ImageReferenceSource = { url: string; kind: "manual" | "web"; sourcePageUrl?: string; originalImageUrl?: string; title?: string };
 type Content = {
   id: number; categoryId: number; topic: string; title: string; summary: string; body: string; extraInstructions: string; imageInstructions: string; imageReferences: string[];
-  status: string; publishNote: string; createdAt: string; updatedAt: string; category: Category; blocks: Block[]; images?: ContentImage[];
+  imageReferenceSources: ImageReferenceSource[]; status: string; publishNote: string; createdAt: string; updatedAt: string; category: Category; blocks: Block[]; images?: ContentImage[];
 };
 type Settings = { globalMemory: string; globalImageMemory: string; cliCommand: string; cliExtraArgs: string; naverBlogId: string; chromeDebugUrl: string; autoWebReferences: boolean };
 type Data = { settings: Settings; categories: Category[]; templates: Template[]; contents: Content[] };
@@ -34,12 +35,21 @@ async function api<T>(url: string, options?: RequestInit): Promise<T> {
 
 async function generateImagesOneByOne(input: { contentId: number; count: number; style: string; imageInstructions?: string }, onProgress: (current: number, total: number) => void) {
   let images: ContentImage[] = [];
+  let imageReferences: string[] = [];
+  let imageReferenceSources: ImageReferenceSource[] = [];
   for (let index = 0; index < input.count; index += 1) {
     onProgress(index + 1, input.count);
-    const result = await api<{ images: ContentImage[] }>("/api/images", { method: "POST", body: JSON.stringify({ ...input, count: 1, batchIndex: index, batchTotal: input.count }) });
+    const result = await api<{ images: ContentImage[]; imageReferences: string[]; imageReferenceSources: ImageReferenceSource[] }>("/api/images", { method: "POST", body: JSON.stringify({ ...input, count: 1, batchIndex: index, batchTotal: input.count }) });
     images = result.images;
+    imageReferences = result.imageReferences;
+    imageReferenceSources = result.imageReferenceSources;
   }
-  return images;
+  return { images, imageReferences, imageReferenceSources };
+}
+
+function sourceHost(value?: string) {
+  if (!value) return "출처 미기록";
+  try { return new URL(value).hostname.replace(/^www\./, ""); } catch { return "원본 출처"; }
 }
 
 function dateText(value: string) {
@@ -179,8 +189,8 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
       let completedContent = content;
       if (autoImageCount > 0) {
         try {
-          const images = await generateImagesOneByOne({ contentId: content.id, count: autoImageCount, style: "clean", imageInstructions }, (current, total) => setBusy(`${current}/${total}번째 블로그 이미지 제작 중`));
-          completedContent = { ...content, images };
+          const imageResult = await generateImagesOneByOne({ contentId: content.id, count: autoImageCount, style: "clean", imageInstructions }, (current, total) => setBusy(`${current}/${total}번째 블로그 이미지 제작 중`));
+          completedContent = { ...content, ...imageResult };
         } catch (imageError) { flash(`글은 저장했지만 이미지 생성에 실패했습니다: ${(imageError as Error).message}`); }
       }
       flash("콘텐츠를 생성하고 보관함에 저장했습니다."); onCreated(completedContent);
@@ -283,8 +293,8 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
     setImageWorking(true);
     setImageProgress(0);
     try {
-      const images = await generateImagesOneByOne({ contentId: draft.id, count: imageCount, style: imageStyle }, (current) => setImageProgress(current));
-      const updated = { ...draft, images };
+      const result = await generateImagesOneByOne({ contentId: draft.id, count: imageCount, style: imageStyle }, (current) => setImageProgress(current));
+      const updated = { ...draft, ...result };
       setDraft(updated); onSaved(updated); flash("블로그 이미지를 생성했습니다.");
     } catch (error) { flash((error as Error).message); } finally { setImageWorking(false); setImageProgress(0); }
   };
@@ -300,7 +310,7 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
       <label>주제<textarea rows={4} value={draft.topic} onChange={(event) => setDraft({ ...draft, topic: event.target.value })} /></label>
       <label>추가 지시<textarea rows={5} value={draft.extraInstructions} onChange={(event) => setDraft({ ...draft, extraInstructions: event.target.value })} /></label>
       <label>이번 글 이미지 지침<textarea rows={4} value={draft.imageInstructions} onChange={(event) => setDraft({ ...draft, imageInstructions: event.target.value })} placeholder="공통·카테고리 이미지 지침에 덧붙일 요청" /></label>
-      {draft.imageReferences.length > 0 && <div className="preview-references"><b>적용 중인 레퍼런스</b><div>{draft.imageReferences.map((url, index) => <img key={url} src={url} alt={`적용 중인 레퍼런스 ${index + 1}`} />)}</div><small>이미지를 추가 제작할 때도 계속 참고합니다.</small></div>}
+      {draft.imageReferences.length > 0 && <div className="preview-references"><b>적용 중인 레퍼런스와 출처</b><div>{draft.imageReferences.map((url, index) => { const source = (draft.imageReferenceSources || []).find((item) => item.url === url); return <figure key={url}><img src={url} alt={`적용 중인 레퍼런스 ${index + 1}`} /><figcaption><strong>{source?.kind === "web" ? sourceHost(source.sourcePageUrl || source.originalImageUrl) : "사용자 제공"}</strong>{source?.title && <span title={source.title}>{source.title}</span>}<nav>{source?.sourcePageUrl && <a href={source.sourcePageUrl} target="_blank" rel="noreferrer">출처 페이지</a>}{source?.originalImageUrl && <a href={source.originalImageUrl} target="_blank" rel="noreferrer">원본 이미지</a>}{source?.kind === "web" && !source.sourcePageUrl && !source.originalImageUrl && <em>출처 미기록</em>}</nav></figcaption></figure>; })}</div><small>자동 선정된 웹 이미지는 출처 링크를 보존합니다. 실제 게시물에는 원본을 복제하지 않고 생성 참고용으로만 사용합니다.</small></div>}
       <div className="image-generator"><div><span className="image-badge">추가 생성</span><h3>이미지 추가 제작</h3><p>{imageBlocks.length ? `구조 템플릿에 지정된 ${imageBlocks.length}개 위치를 기준으로 추가 시안을 만들어요.` : "저장된 글의 제목과 본문을 읽고 이미지를 추가해요."}</p></div>{imageBlocks.length > 0 && <div className="detected-positions"><b>템플릿 이미지 위치</b>{imageBlocks.map((block, index) => <span key={block.id || index}>{index + 1}. {block.label}</span>)}</div>}<label>추가할 이미지 수<select value={imageCount} onChange={(event) => setImageCount(Number(event.target.value))}><option value={1}>1장</option><option value={2}>2장</option><option value={3}>3장</option><option value={4}>4장</option><option value={5}>5장</option></select></label><label>스타일<select value={imageStyle} onChange={(event) => setImageStyle(event.target.value)}><option value="clean">깔끔한 에디토리얼</option><option value="photo">사실적인 사진</option><option value="illustration">친근한 일러스트</option><option value="infographic">미니멀 인포그래픽</option></select></label>{imageWorking && <div className="image-progress"><div><span style={{ width: `${(imageProgress / imageCount) * 100}%` }} /></div><b>{imageProgress}/{imageCount}번째 이미지 제작 중</b></div>}<button className="primary image-generate-button" onClick={generateImages} disabled={imageWorking}>{imageWorking ? `${imageProgress}/${imageCount}번째 제작 중…` : `${imageCount}장 추가 생성`}</button><small>처음 생성할 이미지 수와 지침은 새 콘텐츠 탭에서 정합니다.</small></div>
       <div className="info-box">각 블록을 직접 고치거나 해당 블록만 Codex로 다시 작성할 수 있습니다.</div>
     </aside></div>

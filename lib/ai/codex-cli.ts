@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { resolveCliCommand } from "@/lib/cli-command";
-import { buildArticlePrompt, buildRegeneratePrompt, parseJson } from "./prompt";
+import { buildArticlePrompt, buildRegeneratePrompt, needsMedicalResearch, parseJson } from "./prompt";
 import type { AiAdapter, GenerateInput, GeneratedArticle } from "./types";
 
 function splitArgs(value: string) {
@@ -34,13 +34,13 @@ function runProcess(command: string, args: string[], input?: string, timeoutMs =
 export class CodexCliAdapter implements AiAdapter {
   constructor(private command = "codex", private extraArgs = "") {}
 
-  private async run(prompt: string, schema: object) {
+  private async run(prompt: string, schema: object, enableSearch = false) {
     const dir = await mkdtemp(path.join(tmpdir(), "content-studio-"));
     const outputFile = path.join(dir, "result.txt");
     const schemaFile = path.join(dir, "schema.json");
     try {
       await writeFile(schemaFile, JSON.stringify(schema), "utf8");
-      const args = ["exec", "--skip-git-repo-check", "--sandbox", "read-only", "--output-schema", schemaFile, "--output-last-message", outputFile, ...splitArgs(this.extraArgs), "-"];
+      const args = [...(enableSearch ? ["--search"] : []), "exec", "--skip-git-repo-check", "--sandbox", "read-only", "--output-schema", schemaFile, "--output-last-message", outputFile, ...splitArgs(this.extraArgs), "-"];
       const result = await runProcess(await resolveCliCommand(this.command), args, prompt);
       try { return await readFile(outputFile, "utf8"); } catch { return result.stdout; }
     } finally {
@@ -56,7 +56,7 @@ export class CodexCliAdapter implements AiAdapter {
         blocks: { type: "array", items: { type: "object", additionalProperties: false, required: ["type", "label", "text"], properties: { type: { type: "string" }, label: { type: "string" }, text: { type: "string" } } } },
       },
     };
-    const result = parseJson<GeneratedArticle>(await this.run(buildArticlePrompt(input), schema));
+    const result = parseJson<GeneratedArticle>(await this.run(buildArticlePrompt(input), schema, needsMedicalResearch(input.categoryName)));
     if (!result.title || !result.summary || !Array.isArray(result.blocks) || result.blocks.length !== input.blocks.length) {
       throw new Error("Codex 응답 형식이 올바르지 않습니다. 다시 생성해 주세요.");
     }
@@ -65,7 +65,7 @@ export class CodexCliAdapter implements AiAdapter {
 
   async regenerateBlock(input: GenerateInput & { currentTitle: string; targetIndex: number; currentBlocks: GeneratedArticle["blocks"] }) {
     const schema = { type: "object", additionalProperties: false, required: ["text"], properties: { text: { type: "string" } } };
-    const result = parseJson<{ text: string }>(await this.run(buildRegeneratePrompt(input), schema));
+    const result = parseJson<{ text: string }>(await this.run(buildRegeneratePrompt(input), schema, needsMedicalResearch(input.categoryName)));
     if (!result.text) throw new Error("새 블록 본문이 비어 있습니다.");
     return result;
   }

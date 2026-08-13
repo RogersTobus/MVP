@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { contentInclude, db, ensureSeed, getContentImages, parseImageReferences } from "@/lib/db";
+import { contentInclude, db, ensureSeed, getContentImages, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -12,5 +12,8 @@ export async function GET() {
     db.content.findMany({ include: contentInclude, orderBy: { createdAt: "desc" } }),
     getContentImages(),
   ]);
-  return NextResponse.json({ settings, categories, templates, contents: contents.map((content) => ({ ...content, imageReferences: parseImageReferences(content.imageReferences), images: images.filter((image) => image.contentId === content.id) })) });
+  return NextResponse.json({ settings, categories, templates, contents: contents.map((content) => {
+    const imageReferences = parseImageReferences(content.imageReferences);
+    return { ...content, imageReferences, imageReferenceSources: parseImageReferenceSources(content.imageReferenceSources, imageReferences), images: images.filter((image) => image.contentId === content.id) };
+  }) });
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAiAdapter } from "@/lib/ai";
-import { contentInclude, db, ensureSeed, parseImageReferences } from "@/lib/db";
+import { contentInclude, db, ensureSeed, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,6 +32,8 @@ export async function POST(request: Request) {
     };
     if (!input.topic) return NextResponse.json({ error: "글 주제를 입력해 주세요." }, { status: 400 });
     const generated = await createAiAdapter(settings).generate(input);
+    const imageReferences = Array.isArray(body.imageReferences) ? body.imageReferences.filter((value: unknown) => typeof value === "string" && value.startsWith("/references/")).slice(0, 5) : [];
+    const imageReferenceSources = imageReferences.map((url: string) => ({ url, kind: "manual" as const, title: "사용자 제공 이미지" }));
     const content = await db.content.create({
       data: {
         categoryId: category.id,
@@ -41,12 +43,14 @@ export async function POST(request: Request) {
         body: generated.blocks.filter((_, index) => input.blocks[index]?.type !== "image").map((block) => block.text).join("\n\n"),
         extraInstructions: input.extraInstructions,
         imageInstructions: String(body.imageInstructions || "").trim(),
-        imageReferences: JSON.stringify(Array.isArray(body.imageReferences) ? body.imageReferences.filter((value: unknown) => typeof value === "string" && value.startsWith("/references/")).slice(0, 5) : []),
+        imageReferences: JSON.stringify(imageReferences),
+        imageReferenceSources: JSON.stringify(imageReferenceSources),
         blocks: { create: input.blocks.map((block, index) => ({ ...block, text: generated.blocks[index]?.text || "", sortOrder: index })) },
       },
       include: contentInclude,
     });
-    return NextResponse.json({ ...content, imageReferences: parseImageReferences(content.imageReferences) });
+    const parsedReferences = parseImageReferences(content.imageReferences);
+    return NextResponse.json({ ...content, imageReferences: parsedReferences, imageReferenceSources: parseImageReferenceSources(content.imageReferenceSources, parsedReferences) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "글 생성에 실패했습니다.";
     console.error("[content-generate]", error);

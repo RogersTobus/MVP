@@ -61,15 +61,30 @@ model Content {
   extraInstructions String        @default("")
   imageInstructions String        @default("")
   imageReferences   String        @default("[]")
+  imageReferenceSources String    @default("[]")
   status           String         @default("draft")
   publishNote      String         @default("")
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   category         Category       @relation(fields: [categoryId], references: [id])
   blocks           ContentBlock[]
+  images           ContentImage[]
 
   @@index([createdAt])
   @@index([categoryId, createdAt])
+}
+
+model ContentImage {
+  id             Int      @id @default(autoincrement())
+  contentId      Int
+  prompt         String
+  url            String
+  style          String   @default("clean")
+  placementOrder Int      @default(-1)
+  createdAt      DateTime @default(now())
+  content        Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([contentId, createdAt])
 }
 
 model ContentBlock {

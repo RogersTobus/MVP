@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { mkdir, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { db, getContentImages, parseImageReferences } from "@/lib/db";
+import { db, getContentImages, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
 import { CodexImageCliAdapter } from "@/lib/images/codex-image-cli";
 import { collectNaverImageReferences } from "@/lib/references/naver-image-search";
 import { curateImageReferences } from "@/lib/references/codex-reference-curator";
@@ -26,10 +26,11 @@ export async function POST(request: Request) {
   await mkdir(outputDir, { recursive: true });
   const adapter = new CodexImageCliAdapter(settings.cliCommand, settings.cliExtraArgs);
   let referenceUrls = parseImageReferences(content.imageReferences).filter((url) => existsSync(path.join(process.cwd(), "public", "references", path.basename(url))));
+  let referenceSources = parseImageReferenceSources(content.imageReferenceSources, referenceUrls);
   if (settings.autoWebReferences && batchIndex === 0 && referenceUrls.length < 5) {
     try {
       const webCandidates = await collectNaverImageReferences({ topic: content.topic, debugUrl: settings.chromeDebugUrl, limit: 20 });
-      const candidatePaths = webCandidates.map((url) => path.join(process.cwd(), "public", "references", path.basename(url)));
+      const candidatePaths = webCandidates.map((candidate) => path.join(process.cwd(), "public", "references", path.basename(candidate.localUrl)));
       let selectedPaths: string[] = [];
       try {
         selectedPaths = await curateImageReferences({
@@ -49,7 +50,12 @@ export async function POST(request: Request) {
       await Promise.all(candidatePaths.filter((candidate) => !selectedSet.has(path.resolve(candidate))).map((candidate) => unlink(candidate).catch(() => undefined)));
       const selectedUrls = selectedPaths.map((candidate) => `/references/${path.basename(candidate)}`);
       referenceUrls = [...new Set([...referenceUrls, ...selectedUrls])].slice(0, 5);
-      await db.content.update({ where: { id: content.id }, data: { imageReferences: JSON.stringify(referenceUrls) } });
+      const selectedSources = selectedUrls.map((url) => {
+        const candidate = webCandidates.find((item) => item.localUrl === url)!;
+        return { url, kind: "web" as const, sourcePageUrl: candidate.sourcePageUrl, originalImageUrl: candidate.originalImageUrl, title: candidate.title };
+      });
+      referenceSources = [...referenceSources, ...selectedSources].filter((source, index, items) => items.findIndex((item) => item.url === source.url) === index).filter((source) => referenceUrls.includes(source.url));
+      await db.content.update({ where: { id: content.id }, data: { imageReferences: JSON.stringify(referenceUrls), imageReferenceSources: JSON.stringify(referenceSources) } });
     } catch (error) {
       console.warn("[web-image-reference] 자동 수집을 건너뜁니다.", error);
     }
@@ -86,7 +92,7 @@ export async function POST(request: Request) {
       await adapter.generate({ title: content.title, topic: content.topic, categoryName: content.category.name, summary: content.summary, body: content.blocks.map((block) => `${block.label}: ${block.text}`).join("\n\n"), style, purpose: placement.purpose, setIndex: placement.setIndex, setTotal: batchTotal, setPlan, referencePaths, imageInstructions: combinedImageInstructions, outputPath });
       await db.$executeRawUnsafe(`INSERT INTO "ContentImage" ("contentId", "prompt", "url", "style", "placementOrder") VALUES (?, ?, ?, ?, ?)`, content.id, prompt, `/generated/${filename}`, style, placement.order);
     }
-    return NextResponse.json({ images: await getContentImages(content.id) });
+    return NextResponse.json({ images: await getContentImages(content.id), imageReferences: referenceUrls, imageReferenceSources: referenceSources });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "이미지 생성에 실패했습니다." }, { status: 500 });
   }
