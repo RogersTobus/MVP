@@ -56,6 +56,8 @@ function BlogText({ text }: { text: string }) {
   return <>{text.split(/\n{2,}/).map((paragraph, index) => {
     const trimmed = paragraph.trim();
     if (!trimmed) return null;
+    const generatedHeading = trimmed.length <= 120 ? trimmed.match(/^소제목\s*\d*\s*[.:：]\s*([^\n]+)$/) : null;
+    if (generatedHeading) return <h2 className="inline-generated-heading" key={`${trimmed.slice(0, 24)}-${index}`}>{generatedHeading[1].trim()}</h2>;
     const emojiOnly = /^[\p{Extended_Pictographic}\p{Emoji_Component}\s✨⭐♡♥️·]+$/u.test(trimmed);
     return <p className={emojiOnly ? "emoji-break" : ""} key={`${trimmed.slice(0, 24)}-${index}`}>{trimmed}</p>;
   })}</>;
@@ -65,12 +67,53 @@ function BlogImage({ image, alt }: { image: ContentImage; alt: string }) {
   return <figure className="naver-image"><img src={image.url} alt={alt} /></figure>;
 }
 
+function getPublishingPlan(content: Content) {
+  const textBlocks = content.blocks.filter((block) => block.type !== "image" && block.text?.trim());
+  const paragraphCount = textBlocks.reduce((total, block) => total + (block.text?.split(/\n{2,}/).filter((item) => item.trim()).length || 0), 0);
+  const fullText = textBlocks.map((block) => block.text).join("\n");
+  const internalLabels = new Set(["도입", "공감", "문제 제기", "핵심 정보", "사례", "제품 소개", "결론", "CTA", "자유 블록"]);
+  const headings = textBlocks
+    .filter((block) => ["problem", "core", "case", "product", "faq"].includes(block.type) && !internalLabels.has(block.label.trim()))
+    .map((block) => block.label);
+  const medical = /병원|진료|의료/.test(content.category.name);
+  const subject = `${content.category.name} ${content.topic} ${content.title}`;
+  const portfolio = /리모델링|인테리어|시공|포트폴리오|비포\s*애프터|before\s*after/i.test(subject);
+  const insight = /마케팅|경영|MBA|AI|자동화|스터디/i.test(subject);
+  const imageCount = content.images?.length || 0;
+  return {
+    paragraphCount,
+    headings,
+    imageCount,
+    hasChecklist: /(^|\n)\s*(?:■|□|✓|✔|[-•])\s+/m.test(fullText),
+    hasFaq: /(^|\n)\s*(?:Q\.?\s*\d*|자주 묻는 질문)/im.test(fullText),
+    layout: medical ? "정보 설명형" : portfolio ? "포토 포트폴리오형" : insight ? "인사이트형" : "생활 스토리형",
+    imageGuide: portfolio ? "공간·단계별 전후 흐름으로 배치" : "설정한 블록 위치에 본문과 함께 배치",
+    stickerGuide: medical ? "의료 정보형이라 사용하지 않음" : portfolio ? "공간 전환 사이 1~2회 선택" : "첫 이미지 뒤 1회만 추천",
+  };
+}
+
+function PublishingBlueprint({ content }: { content: Content }) {
+  const plan = getPublishingPlan(content);
+  return <section className="publishing-blueprint">
+    <div className="blueprint-head"><div><span>발행 설계</span><h3>네이버 게시 연출 지도</h3></div><em>{plan.layout}</em></div>
+    <p className="blueprint-help">본문 미리보기는 실제 게시 순서로 붙여 보여줍니다. 점선 항목은 네이버 편집기에서 더할 최종 연출 추천입니다.</p>
+    <ol>
+      <li><i>1</i><div><b>제목과 첫 장면</b><span>검색어를 담은 제목 뒤, 독자의 구체적인 상황으로 시작</span></div></li>
+      <li><i>2</i><div><b>짧은 문단 {plan.paragraphCount}개</b><span>모바일에서 한 덩어리로 보이지 않게 호흡을 분리</span></div></li>
+      <li><i>3</i><div><b>이미지 {plan.imageCount}장</b><span>{plan.imageCount ? plan.imageGuide : "아직 생성된 이미지가 없습니다"}</span></div></li>
+      {plan.headings.length > 0 && <li><i>4</i><div><b>자연스러운 소제목 {plan.headings.length}개</b><span>{plan.headings.slice(0, 3).join(" · ")}</span></div></li>}
+      <li className="recommendation"><i>+</i><div><b>네이버 스티커</b><span>{plan.stickerGuide}</span></div></li>
+    </ol>
+    <div className="blueprint-signals"><span className={plan.hasChecklist ? "ready" : ""}>체크리스트 {plan.hasChecklist ? "반영" : "선택"}</span><span className={plan.hasFaq ? "ready" : ""}>FAQ {plan.hasFaq ? "반영" : "선택"}</span><span>과장 없는 결론</span></div>
+  </section>;
+}
+
 function NaverStylePreview({ content }: { content: Content }) {
   const coverImages = (content.images || []).filter((image) => image.placementOrder < 0);
   const headingTypes = new Set(["problem", "core", "case", "product", "faq"]);
   const internalLabels = new Set(["도입", "공감", "문제 제기", "핵심 정보", "사례", "제품 소개", "결론", "CTA", "자유 블록"]);
   return <article className="naver-post-preview">
-    <div className="naver-post-head"><h1>{content.title}</h1></div>
+    <div className="naver-post-head"><span>{content.category.name}</span><h1>{content.title}</h1><div><b>콘텐츠 스튜디오</b><em>{dateText(content.updatedAt)}</em></div></div>
     {coverImages.map((image) => <BlogImage key={image.id} image={image} alt={`${content.title} 대표 이미지`} />)}
     <div className="naver-post-body">{content.blocks.map((block, index) => {
       if (block.type === "image") {
@@ -338,7 +381,7 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
       <label>본문 요약<textarea rows={2} value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} /></label>
       {(draft.images || []).some((image) => image.placementOrder < 0) && <div className="generated-images"><div className="section-label"><b>대표 이미지</b><span>{draft.images?.filter((image) => image.placementOrder < 0).length}장</span></div><div className="image-grid">{draft.images?.filter((image) => image.placementOrder < 0).map((image) => <figure key={image.id}><img src={image.url} alt={`${draft.title} 대표 이미지`} /><figcaption>{image.prompt}</figcaption></figure>)}</div></div>}
       <div className="preview-blocks">{draft.blocks.map((block, index) => block.type === "image" ? <article className="image-position-card" key={block.id || index}><div className="block-toolbar"><span>{String(index + 1).padStart(2, "0")}</span><b>🖼 {block.label}</b><em>이 위치에 이미지 표시</em></div>{(draft.images || []).filter((image) => image.placementOrder === (block.sortOrder ?? index)).length > 0 ? <div className="image-grid inline">{draft.images?.filter((image) => image.placementOrder === (block.sortOrder ?? index)).map((image) => <figure key={image.id}><img src={image.url} alt={`${block.label} 이미지`} /><figcaption>{image.prompt}</figcaption></figure>)}</div> : <div className="image-placeholder"><b>이미지 생성 위치</b><span>{block.instruction || block.text || "이 블록의 앞뒤 내용에 어울리는 이미지"}</span></div>}<textarea rows={3} value={block.text} onChange={(event) => setDraft({ ...draft, blocks: draft.blocks.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) })} placeholder="AI가 작성한 이미지 묘사 또는 직접 입력할 생성 지침" /></article> : <article key={block.id || index}><div className="block-toolbar"><span>{String(index + 1).padStart(2, "0")}</span><b>{block.label}</b><button onClick={() => regenerate(block)} disabled={working === block.id}>{working === block.id ? "작성 중…" : "✦ 이 블록 재생성"}</button></div><textarea rows={Math.max(5, Math.ceil((block.text?.length || 0) / 55))} value={block.text} onChange={(event) => setDraft({ ...draft, blocks: draft.blocks.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) })} /></article>)}</div></>}
-    </section><aside className="preview-info"><h3>글 정보</h3>
+    </section><aside className="preview-info"><PublishingBlueprint content={draft} /><h3 className="info-heading">글 정보</h3>
       <label>카테고리<select value={draft.categoryId} onChange={(event) => { const categoryId = Number(event.target.value); setDraft({ ...draft, categoryId, category: data.categories.find((category) => category.id === categoryId)! }); }}>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
       <label>주제<textarea rows={4} value={draft.topic} onChange={(event) => setDraft({ ...draft, topic: event.target.value })} /></label>
       <label>추가 지시<textarea rows={5} value={draft.extraInstructions} onChange={(event) => setDraft({ ...draft, extraInstructions: event.target.value })} /></label>
