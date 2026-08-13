@@ -18,6 +18,17 @@ const readabilityRules = `
 - 모바일 화면에서 읽는 네이버 블로그를 기준으로, 의미 없는 한 문장 줄바꿈은 남발하지 않되 긴 글 덩어리는 만들지 마세요.
 `.trim();
 
+const naverEditingRules = `
+[네이버 블로그 편집 리듬]
+- 완성된 본문은 블록별 답변을 이어 붙인 티가 나지 않게 하나의 글처럼 연결하세요. 앞 블록의 마지막 문장과 다음 블록의 첫 문장이 자연스럽게 이어져야 합니다.
+- 전체 글에서 내용에 맞는 이모지는 2~4회만 사용하세요. 제목마다 붙이거나 문장 끝마다 반복하지 말고, 분위기 전환·핵심 팁·마무리에만 가볍게 사용하세요.
+- 스티커처럼 보이는 이모지 단독 문단은 전체 글에 최대 한 번만 허용합니다. 예: ‘👀✨’, ‘💻✨’, ‘📌’. 글의 주제와 어울릴 때만 쓰고 의료 위험·부작용 설명에는 넣지 마세요.
+- 한두 개의 짧은 문장을 독립 문단으로 두어 호흡을 만들 수 있지만, 모든 문장을 한 줄씩 끊는 기계적인 패턴은 피하세요.
+- 번호 목록, Q&A, 체크 목록을 적절히 섞되 같은 형식을 연속해서 반복하지 마세요.
+- 실제 사용·방문·시술 경험이 제공되지 않았다면 ‘제가 써보니’, ‘직접 받아보니’, ‘저희 집은’ 같은 1인칭 체험을 꾸며내지 마세요. 정보형 글은 관찰 가능한 상황과 독자의 질문을 중심으로 자연스럽게 쓰세요.
+- 이모티콘과 친근한 어미보다 내용의 정확성과 구체성이 우선입니다. 장식은 설명을 돕는 편집 요소일 뿐 정보량을 대신할 수 없습니다.
+`.trim();
+
 const medicalResearchRules = `
 [의료 주제 리서치와 설명 깊이]
 - 글을 쓰기 전에 웹 검색으로 정부·공공 의료기관, 관련 학회, 대학병원 등 신뢰할 수 있는 자료를 우선 확인하세요. 검색 결과의 광고성 문구나 한 병원의 주장만 근거로 삼지 마세요.
@@ -75,6 +86,7 @@ ${input.blocks.map((b, index) => `${index + 1}. ${b.label} (${b.type})\n지시: 
 ${guardrails}
 
 ${readabilityRules}
+${naverEditingRules}
 
 ${needsMedicalResearch(input.categoryName) ? medicalResearchRules : ""}
 
@@ -104,6 +116,7 @@ ${input.currentBlocks.map((b, i) => `${i + 1}. ${b.label}: ${i === input.targetI
 
 ${guardrails}
 ${readabilityRules}
+${naverEditingRules}
 ${needsMedicalResearch(input.categoryName) ? medicalResearchRules : ""}
 아래 JSON 형식으로만 답하세요: {"text":"새 블록 본문"}`;
 }

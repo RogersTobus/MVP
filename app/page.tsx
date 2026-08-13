@@ -52,10 +52,33 @@ function sourceHost(value?: string) {
   try { return new URL(value).hostname.replace(/^www\./, ""); } catch { return "원본 출처"; }
 }
 
-function GeneratedImageSources({ content }: { content: Content }) {
-  const references = content.imageReferences || [];
-  if (!references.length) return <div className="generated-source empty"><b>생성 참고 출처</b><span>외부 이미지 레퍼런스 없이 생성</span></div>;
-  return <div className="generated-source"><b>생성 참고 출처</b><div>{references.map((url, index) => { const source = (content.imageReferenceSources || []).find((item) => item.url === url); const href = source?.sourcePageUrl || source?.originalImageUrl; return href ? <a key={url} href={href} target="_blank" rel="noreferrer">{index + 1}. {sourceHost(href)}</a> : <span key={url}>{index + 1}. {source?.kind === "manual" ? "사용자 제공" : "출처 미기록"}</span>; })}</div></div>;
+function BlogText({ text }: { text: string }) {
+  return <>{text.split(/\n{2,}/).map((paragraph, index) => {
+    const trimmed = paragraph.trim();
+    if (!trimmed) return null;
+    const emojiOnly = /^[\p{Extended_Pictographic}\p{Emoji_Component}\s✨⭐♡♥️·]+$/u.test(trimmed);
+    return <p className={emojiOnly ? "emoji-break" : ""} key={`${trimmed.slice(0, 24)}-${index}`}>{trimmed}</p>;
+  })}</>;
+}
+
+function BlogImage({ image, alt }: { image: ContentImage; alt: string }) {
+  return <figure className="naver-image"><img src={image.url} alt={alt} /></figure>;
+}
+
+function NaverStylePreview({ content }: { content: Content }) {
+  const coverImages = (content.images || []).filter((image) => image.placementOrder < 0);
+  const headingTypes = new Set(["problem", "core", "case", "product", "faq"]);
+  return <article className="naver-post-preview">
+    <div className="naver-post-head"><h1>{content.title}</h1><p>{content.summary}</p></div>
+    {coverImages.map((image) => <BlogImage key={image.id} image={image} alt={`${content.title} 대표 이미지`} />)}
+    <div className="naver-post-body">{content.blocks.map((block, index) => {
+      if (block.type === "image") {
+        const images = (content.images || []).filter((image) => image.placementOrder === (block.sortOrder ?? index));
+        return images.length ? <div className="naver-image-group" key={block.id || index}>{images.map((image) => <BlogImage key={image.id} image={image} alt={`${block.label} 이미지`} />)}</div> : null;
+      }
+      return <section key={block.id || index}>{headingTypes.has(block.type) && <h2>{block.label}</h2>}<BlogText text={block.text || ""} /></section>;
+    })}</div>
+  </article>;
 }
 
 function dateText(value: string) {
@@ -277,6 +300,7 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
   const [imageProgress, setImageProgress] = useState(0);
   const [imageCount, setImageCount] = useState(1);
   const [imageStyle, setImageStyle] = useState("clean");
+  const [viewMode, setViewMode] = useState<"preview" | "edit">("preview");
   const imageBlocks = draft.blocks.filter((block) => block.type === "image");
   const save = async () => {
     try {
@@ -306,11 +330,12 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
   };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="preview-modal">
     <header><div><span className={`category-pill ${draft.category.color}`}>{draft.category.name}</span><span className="date">{dateText(draft.updatedAt)}</span></div><button className="close" onClick={onClose}>×</button></header>
-    <div className="preview-grid"><section className="article-editor">
+    <div className="preview-grid"><section className="article-editor"><div className="preview-mode-switch"><button className={viewMode === "preview" ? "active" : ""} onClick={() => setViewMode("preview")}>네이버형 미리보기</button><button className={viewMode === "edit" ? "active" : ""} onClick={() => setViewMode("edit")}>블록 편집</button></div>
+      {viewMode === "preview" ? <NaverStylePreview content={draft} /> : <>
       <label>제목<input className="preview-title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
       <label>본문 요약<textarea rows={2} value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} /></label>
-      {(draft.images || []).some((image) => image.placementOrder < 0) && <div className="generated-images"><div className="section-label"><b>대표 이미지</b><span>{draft.images?.filter((image) => image.placementOrder < 0).length}장</span></div><div className="image-grid">{draft.images?.filter((image) => image.placementOrder < 0).map((image) => <figure key={image.id}><img src={image.url} alt={`${draft.title} 대표 이미지`} /><figcaption>{image.prompt}</figcaption><GeneratedImageSources content={draft} /></figure>)}</div></div>}
-      <div className="preview-blocks">{draft.blocks.map((block, index) => block.type === "image" ? <article className="image-position-card" key={block.id || index}><div className="block-toolbar"><span>{String(index + 1).padStart(2, "0")}</span><b>🖼 {block.label}</b><em>이 위치에 이미지 표시</em></div>{(draft.images || []).filter((image) => image.placementOrder === (block.sortOrder ?? index)).length > 0 ? <div className="image-grid inline">{draft.images?.filter((image) => image.placementOrder === (block.sortOrder ?? index)).map((image) => <figure key={image.id}><img src={image.url} alt={`${block.label} 이미지`} /><figcaption>{image.prompt}</figcaption><GeneratedImageSources content={draft} /></figure>)}</div> : <div className="image-placeholder"><b>이미지 생성 위치</b><span>{block.instruction || block.text || "이 블록의 앞뒤 내용에 어울리는 이미지"}</span></div>}<textarea rows={3} value={block.text} onChange={(event) => setDraft({ ...draft, blocks: draft.blocks.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) })} placeholder="AI가 작성한 이미지 묘사 또는 직접 입력할 생성 지침" /></article> : <article key={block.id || index}><div className="block-toolbar"><span>{String(index + 1).padStart(2, "0")}</span><b>{block.label}</b><button onClick={() => regenerate(block)} disabled={working === block.id}>{working === block.id ? "작성 중…" : "✦ 이 블록 재생성"}</button></div><textarea rows={Math.max(5, Math.ceil((block.text?.length || 0) / 55))} value={block.text} onChange={(event) => setDraft({ ...draft, blocks: draft.blocks.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) })} /></article>)}</div>
+      {(draft.images || []).some((image) => image.placementOrder < 0) && <div className="generated-images"><div className="section-label"><b>대표 이미지</b><span>{draft.images?.filter((image) => image.placementOrder < 0).length}장</span></div><div className="image-grid">{draft.images?.filter((image) => image.placementOrder < 0).map((image) => <figure key={image.id}><img src={image.url} alt={`${draft.title} 대표 이미지`} /><figcaption>{image.prompt}</figcaption></figure>)}</div></div>}
+      <div className="preview-blocks">{draft.blocks.map((block, index) => block.type === "image" ? <article className="image-position-card" key={block.id || index}><div className="block-toolbar"><span>{String(index + 1).padStart(2, "0")}</span><b>🖼 {block.label}</b><em>이 위치에 이미지 표시</em></div>{(draft.images || []).filter((image) => image.placementOrder === (block.sortOrder ?? index)).length > 0 ? <div className="image-grid inline">{draft.images?.filter((image) => image.placementOrder === (block.sortOrder ?? index)).map((image) => <figure key={image.id}><img src={image.url} alt={`${block.label} 이미지`} /><figcaption>{image.prompt}</figcaption></figure>)}</div> : <div className="image-placeholder"><b>이미지 생성 위치</b><span>{block.instruction || block.text || "이 블록의 앞뒤 내용에 어울리는 이미지"}</span></div>}<textarea rows={3} value={block.text} onChange={(event) => setDraft({ ...draft, blocks: draft.blocks.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) })} placeholder="AI가 작성한 이미지 묘사 또는 직접 입력할 생성 지침" /></article> : <article key={block.id || index}><div className="block-toolbar"><span>{String(index + 1).padStart(2, "0")}</span><b>{block.label}</b><button onClick={() => regenerate(block)} disabled={working === block.id}>{working === block.id ? "작성 중…" : "✦ 이 블록 재생성"}</button></div><textarea rows={Math.max(5, Math.ceil((block.text?.length || 0) / 55))} value={block.text} onChange={(event) => setDraft({ ...draft, blocks: draft.blocks.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) })} /></article>)}</div></>}
     </section><aside className="preview-info"><h3>글 정보</h3>
       <label>카테고리<select value={draft.categoryId} onChange={(event) => { const categoryId = Number(event.target.value); setDraft({ ...draft, categoryId, category: data.categories.find((category) => category.id === categoryId)! }); }}>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
       <label>주제<textarea rows={4} value={draft.topic} onChange={(event) => setDraft({ ...draft, topic: event.target.value })} /></label>
