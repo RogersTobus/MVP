@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model AppSetting {
+  id              Int      @id @default(1)
+  globalMemory    String   @default("")
+  globalImageMemory String @default("")
+  cliCommand      String   @default("codex")
+  cliExtraArgs    String   @default("")
+  naverBlogId     String   @default("")
+  chromeDebugUrl  String   @default("http://127.0.0.1:9222")
+  autoWebReferences Boolean @default(true)
+  updatedAt       DateTime @updatedAt
+}
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  memory    String    @default("")
+  imageMemory String  @default("")
+  color     String    @default("sage")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  contents  Content[]
+}
+
+model Template {
+  id          Int             @id @default(autoincrement())
+  name        String
+  description String          @default("")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  blocks      TemplateBlock[]
+}
+
+model TemplateBlock {
+  id          Int      @id @default(autoincrement())
+  templateId  Int
+  type        String
+  label       String
+  instruction String   @default("")
+  sortOrder   Int
+  template    Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, sortOrder])
+}
+
+model Content {
+  id               Int            @id @default(autoincrement())
+  categoryId       Int
+  topic            String
+  title            String         @default("")
+  summary          String         @default("")
+  body             String         @default("")
+  extraInstructions String        @default("")
+  imageInstructions String        @default("")
+  imageReferences   String        @default("[]")
+  status           String         @default("draft")
+  publishNote      String         @default("")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  category         Category       @relation(fields: [categoryId], references: [id])
+  blocks           ContentBlock[]
+
+  @@index([createdAt])
+  @@index([categoryId, createdAt])
+}
+
+model ContentBlock {
+  id          Int      @id @default(autoincrement())
+  contentId   Int
+  type        String
+  label       String
+  instruction String   @default("")
+  text        String   @default("")
+  sortOrder   Int
+  content     Content  @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@index([contentId, sortOrder])
+}

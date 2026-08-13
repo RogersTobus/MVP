@@ -1,0 +1,27 @@
+{
+  "name": "naver-content-studio",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 0.0.0.0 --port 3000",
+    "build": "next build",
+    "start": "next start --hostname 0.0.0.0 --port 3000",
+    "lint": "next lint",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.0",
+    "next": "16.2.10",
+    "playwright-core": "1.62.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.8",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "prisma": "6.19.0",
+    "typescript": "5.9.3"
+  }
+}

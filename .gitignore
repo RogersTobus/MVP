@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+work/
+public/references/web-*
+npm-debug.log*
