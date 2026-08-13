@@ -179,7 +179,7 @@ function Library({ data, contents, search, setSearch, filterCategory, setFilterC
   onPreview: (v: Content) => void; onRefresh: () => Promise<void>; flash: (v: string) => void; setBusy: (v: string) => void;
 }) {
   const preparePublish = async (content: Content) => {
-    setBusy("네이버 작성 화면을 준비하고 있습니다");
+    setBusy("전용 Chrome을 확인하고 네이버 작성 화면을 준비하고 있습니다");
     try {
       const result = await api<{ message: string }>("/api/publish", { method: "POST", body: JSON.stringify({ contentId: content.id }) });
       flash(result.message); await onRefresh();

@@ -2,6 +2,7 @@ import { chromium } from "playwright-core";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { ensureChromeDebugSession } from "@/lib/publishers/chrome-debug";
 
 const extensions: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -31,6 +32,7 @@ function sourcePageUrl(href: string, imageUrl: string) {
 
 export async function collectNaverImageReferences(input: { topic: string; debugUrl: string; limit: number }) {
   if (input.limit <= 0) return [];
+  await ensureChromeDebugSession(input.debugUrl);
   const browser = await chromium.connectOverCDP(input.debugUrl);
   const context = browser.contexts()[0];
   if (!context) throw new Error("Chrome 디버깅 세션을 찾지 못했습니다.");

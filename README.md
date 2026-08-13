@@ -100,13 +100,15 @@ Codex CLI 로그인과 Chrome 디버깅용 네이버 로그인은 PC마다 한 �
 
 ## 네이버 게시 준비
 
-이 MVP는 사용자의 정상 로그인 세션을 사용하기 위해 Chrome 원격 디버깅 연결 방식을 씁니다. 기존 Chrome을 모두 종료한 뒤 별도 프로필로 Chrome을 여는 예시는 다음과 같습니다.
+이 MVP는 사용자의 정상 로그인 세션을 사용하기 위해 Chrome 원격 디버깅 연결 방식을 씁니다. `게시 준비`를 누르면 연결 상태를 먼저 확인하고, 꺼져 있으면 별도 프로필의 콘텐츠 스튜디오용 Chrome을 자동으로 엽니다. 처음 열린 창에서 네이버에 정상 로그인하면 이후에도 같은 로그인 상태를 사용합니다.
+
+자동 실행이 되지 않을 때 직접 여는 명령은 다음과 같습니다.
 
 ```powershell
 Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList "--remote-debugging-port=9222", "--user-data-dir=$env:LOCALAPPDATA\NaverContentStudioChrome"
 ```
 
-1. 열린 Chrome에서 네이버에 정상 로그인합니다.
+1. `게시 준비`를 눌러 열린 전용 Chrome에서 네이버에 정상 로그인합니다.
 2. 앱 설정에 블로그 ID와 `http://127.0.0.1:9222`를 저장합니다.
 3. 콘텐츠 보관함에서 `게시 준비`를 누릅니다.
 4. 앱이 새 글 작성 화면에 제목과 본문 초안을 채웁니다.

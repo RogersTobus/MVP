@@ -1,5 +1,6 @@
 import { chromium, type Locator, type Page } from "playwright-core";
 import type { BlogPublisher, PublishDraft, PublishResult } from "./types";
+import { ensureChromeDebugSession } from "./chrome-debug";
 
 async function firstVisible(page: Page, selectors: string[]): Promise<Locator | null> {
   for (const selector of selectors) {
@@ -20,7 +21,13 @@ export class NaverPublisher implements BlogPublisher {
 
   async prepareDraft(draft: PublishDraft): Promise<PublishResult> {
     if (!this.blogId) throw new Error("설정에서 네이버 블로그 ID를 입력해 주세요.");
-    const browser = await chromium.connectOverCDP(this.debugUrl);
+    await ensureChromeDebugSession(this.debugUrl);
+    let browser;
+    try {
+      browser = await chromium.connectOverCDP(this.debugUrl);
+    } catch {
+      throw new Error("콘텐츠 스튜디오용 Chrome에 연결하지 못했습니다. 열린 Chrome 창을 확인한 뒤 다시 시도해 주세요.");
+    }
     const context = browser.contexts()[0];
     if (!context) throw new Error("Chrome 디버깅 세션을 찾지 못했습니다.");
     const page = await context.newPage();
