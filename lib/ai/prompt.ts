@@ -8,6 +8,16 @@ const guardrails = `
 - 결과 외의 설명은 쓰지 마세요.
 `.trim();
 
+const readabilityRules = `
+[문단과 가독성]
+- 한 문단에는 하나의 핵심만 담고 보통 2~3문장으로 끝내세요. 긴 문단 하나에 설명을 몰아넣지 마세요.
+- 화제가 바뀌거나 원리에서 사례, 장점에서 주의사항으로 전환될 때는 반드시 빈 줄로 문단을 나누세요.
+- 한 문장은 가능하면 짧고 분명하게 쓰고, 쉼표로 여러 정보를 끝없이 연결하지 마세요.
+- 비교 기준, 준비사항, 확인 항목처럼 병렬적인 내용은 짧은 목록으로 정리하세요. 목록의 각 항목도 한두 문장 이내로 씁니다.
+- 소제목 바로 아래에는 결론을 먼저 두고 다음 문단에서 이유와 세부 설명을 이어가세요.
+- 모바일 화면에서 읽는 네이버 블로그를 기준으로, 의미 없는 한 문장 줄바꿈은 남발하지 않되 긴 글 덩어리는 만들지 마세요.
+`.trim();
+
 const medicalResearchRules = `
 [의료 주제 리서치와 설명 깊이]
 - 글을 쓰기 전에 웹 검색으로 정부·공공 의료기관, 관련 학회, 대학병원 등 신뢰할 수 있는 자료를 우선 확인하세요. 검색 결과의 광고성 문구나 한 병원의 주장만 근거로 삼지 마세요.
@@ -64,6 +74,8 @@ ${input.blocks.map((b, index) => `${index + 1}. ${b.label} (${b.type})\n지시: 
 
 ${guardrails}
 
+${readabilityRules}
+
 ${needsMedicalResearch(input.categoryName) ? medicalResearchRules : ""}
 
 아래 JSON 형식으로만 답하세요. blocks는 이미지 블록을 포함해 입력 구조와 같은 순서와 개수여야 합니다.
@@ -91,6 +103,7 @@ ${input.currentBlocks.map((b, i) => `${i + 1}. ${b.label}: ${i === input.targetI
 - 억지 공감이나 과한 감탄 없이 차분하고 친절하게 쓰되 핵심 정보는 분명히 남기세요.
 
 ${guardrails}
+${readabilityRules}
 ${needsMedicalResearch(input.categoryName) ? medicalResearchRules : ""}
 아래 JSON 형식으로만 답하세요: {"text":"새 블록 본문"}`;
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAiAdapter } from "@/lib/ai";
 import { contentInclude, db, ensureSeed, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
+import { formatBlogBlockText } from "@/lib/content-format";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
     };
     if (!input.topic) return NextResponse.json({ error: "글 주제를 입력해 주세요." }, { status: 400 });
     const generated = await createAiAdapter(settings).generate(input);
+    const formattedBlocks = generated.blocks.map((block, index) => input.blocks[index]?.type === "image" ? block : { ...block, text: formatBlogBlockText(block.text) });
     const imageReferences = Array.isArray(body.imageReferences) ? body.imageReferences.filter((value: unknown) => typeof value === "string" && value.startsWith("/references/")).slice(0, 5) : [];
     const imageReferenceSources = imageReferences.map((url: string) => ({ url, kind: "manual" as const, title: "사용자 제공 이미지" }));
     const content = await db.content.create({
@@ -40,12 +42,12 @@ export async function POST(request: Request) {
         topic: input.topic,
         title: generated.title,
         summary: generated.summary,
-        body: generated.blocks.filter((_, index) => input.blocks[index]?.type !== "image").map((block) => block.text).join("\n\n"),
+        body: formattedBlocks.filter((_, index) => input.blocks[index]?.type !== "image").map((block) => block.text).join("\n\n"),
         extraInstructions: input.extraInstructions,
         imageInstructions: String(body.imageInstructions || "").trim(),
         imageReferences: JSON.stringify(imageReferences),
         imageReferenceSources: JSON.stringify(imageReferenceSources),
-        blocks: { create: input.blocks.map((block, index) => ({ ...block, text: generated.blocks[index]?.text || "", sortOrder: index })) },
+        blocks: { create: input.blocks.map((block, index) => ({ ...block, text: formattedBlocks[index]?.text || "", sortOrder: index })) },
       },
       include: contentInclude,
     });
