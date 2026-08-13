@@ -202,7 +202,7 @@ function Library({ data, contents, search, setSearch, filterCategory, setFilterC
         <td className="date">{dateText(content.createdAt)}</td><td><span className={`category-pill ${content.category.color}`}>{content.category.name}</span></td>
         <td className="title-cell"><small>{content.topic}</small><b>{content.title}</b></td><td className="summary">{content.summary || "요약이 없습니다."}</td>
         <td><span className={`status ${content.status}`}>{content.status === "publish_ready" ? "발행 준비" : "초안"}</span></td>
-        <td><div className="row-actions"><button onClick={() => onPreview(content)}>미리보기</button><button onClick={() => preparePublish(content)}>게시 준비</button><button className="danger-text" onClick={() => remove(content)}>삭제</button></div></td>
+        <td><div className="row-actions"><button onClick={() => onPreview(content)}>미리보기</button><button onClick={() => preparePublish(content)}>게시 준비{content.images?.length ? ` · 사진 ${content.images.length}장` : ""}</button><button className="danger-text" onClick={() => remove(content)}>삭제</button></div></td>
       </tr>)}</tbody></table></div> : <div className="empty"><div>✦</div><h3>아직 저장된 콘텐츠가 없습니다</h3><p>새 콘텐츠에서 첫 글을 만들어 보세요.</p></div>}
     </div>
   </section>;
@@ -213,6 +213,7 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
   const [templateId, setTemplateId] = useState(data.templates[0]?.id || 0);
   const [topic, setTopic] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
+  const [lengthMode, setLengthMode] = useState<"short" | "standard" | "deep">("standard");
   const [imageInstructions, setImageInstructions] = useState("");
   const [imageReferences, setImageReferences] = useState<string[]>([]);
   const [referenceUploading, setReferenceUploading] = useState(false);
@@ -259,7 +260,7 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
     if (!topic.trim()) return flash("글 주제를 입력해 주세요.");
     setBusy("Codex가 글을 작성하고 있습니다");
     try {
-      const content = await api<Content>("/api/generate", { method: "POST", body: JSON.stringify({ categoryId, templateId, topic, extraInstructions, imageInstructions, imageReferences }) });
+      const content = await api<Content>("/api/generate", { method: "POST", body: JSON.stringify({ categoryId, templateId, topic, extraInstructions, imageInstructions, imageReferences, lengthMode }) });
       let completedContent = content;
       if (autoImageCount > 0) {
         try {
@@ -288,6 +289,7 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
     <div className="panel structure-preview"><div className="panel-heading"><div><span className="step">02</span><h2>글 구조를 선택하세요</h2></div></div>
       <select value={templateId} onChange={(e) => setTemplateId(Number(e.target.value))}>{data.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
       <p className="template-desc">{selected?.description}</p><div className="mini-blocks">{selected?.blocks.map((block, i) => <div key={`${block.type}-${i}`}><span>{String(i + 1).padStart(2, "0")}</span><div><b>{block.label}</b><small>{block.instruction || "자연스럽게 작성"}</small></div></div>)}</div>
+      <div className="create-image-count"><div><b>글 분량</b><small>기본은 사진 사이에서 부담 없이 읽히는 길이예요.</small></div><select className="content-length-select" value={lengthMode} onChange={(event) => setLengthMode(event.target.value as "short" | "standard" | "deep")}><option value="short">짧게 · 900~1,200자</option><option value="standard">기본 · 1,400~1,900자</option><option value="deep">자세히 · 2,200~3,000자</option></select></div>
       <div className="create-image-count"><div><b>이미지 자동 생성</b><small>글과 함께 만들 이미지 수를 선택하세요.</small></div><select value={autoImageCount} onChange={(event) => setAutoImageCount(Number(event.target.value))}><option value={0}>생성 안 함</option><option value={1}>1장</option><option value={2}>2장</option><option value={3}>3장</option><option value={4}>4장</option><option value={5}>5장</option></select></div>
       <button className="primary generate" onClick={generate} disabled={!!busy}>✦ 콘텐츠 생성하기</button><small className="center-note">생성 결과는 자동 게시되지 않고 보관함에 저장됩니다.</small>
     </div>
@@ -346,6 +348,7 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
   const [imageCount, setImageCount] = useState(1);
   const [imageStyle, setImageStyle] = useState("clean");
   const [viewMode, setViewMode] = useState<"preview" | "edit">("preview");
+  const [rewriting, setRewriting] = useState(false);
   const imageBlocks = draft.blocks.filter((block) => block.type === "image");
   const save = async () => {
     try {
@@ -373,6 +376,14 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
       setDraft(updated); onSaved(updated); flash("블로그 이미지를 생성했습니다.");
     } catch (error) { flash((error as Error).message); } finally { setImageWorking(false); setImageProgress(0); }
   };
+  const rewriteShort = async () => {
+    if (!confirm("현재 글을 900~1,200자 분량으로 짧게 다시 쓸까요? 생성된 이미지는 그대로 유지됩니다.")) return;
+    setRewriting(true);
+    try {
+      const updated = await api<Content>("/api/rewrite", { method: "POST", body: JSON.stringify({ contentId: draft.id, lengthMode: "short" }) });
+      setDraft(updated); onSaved(updated); flash("중복 설명을 걷어내고 짧은 네이버형 글로 다시 작성했습니다.");
+    } catch (error) { flash((error as Error).message); } finally { setRewriting(false); }
+  };
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="preview-modal">
     <header><div><span className={`category-pill ${draft.category.color}`}>{draft.category.name}</span><span className="date">{dateText(draft.updatedAt)}</span></div><button className="close" onClick={onClose}>×</button></header>
     <div className="preview-grid"><section className="article-editor"><div className="preview-mode-switch"><button className={viewMode === "preview" ? "active" : ""} onClick={() => setViewMode("preview")}>네이버형 미리보기</button><button className={viewMode === "edit" ? "active" : ""} onClick={() => setViewMode("edit")}>블록 편집</button></div>
@@ -390,6 +401,6 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
       <div className="image-generator"><div><span className="image-badge">추가 생성</span><h3>이미지 추가 제작</h3><p>{imageBlocks.length ? `구조 템플릿에 지정된 ${imageBlocks.length}개 위치를 기준으로 추가 시안을 만들어요.` : "저장된 글의 제목과 본문을 읽고 이미지를 추가해요."}</p></div>{imageBlocks.length > 0 && <div className="detected-positions"><b>템플릿 이미지 위치</b>{imageBlocks.map((block, index) => <span key={block.id || index}>{index + 1}. {block.label}</span>)}</div>}<label>추가할 이미지 수<select value={imageCount} onChange={(event) => setImageCount(Number(event.target.value))}><option value={1}>1장</option><option value={2}>2장</option><option value={3}>3장</option><option value={4}>4장</option><option value={5}>5장</option></select></label><label>스타일<select value={imageStyle} onChange={(event) => setImageStyle(event.target.value)}><option value="clean">깔끔한 에디토리얼</option><option value="photo">사실적인 사진</option><option value="illustration">친근한 일러스트</option><option value="infographic">미니멀 인포그래픽</option></select></label>{imageWorking && <div className="image-progress"><div><span style={{ width: `${(imageProgress / imageCount) * 100}%` }} /></div><b>{imageProgress}/{imageCount}번째 이미지 제작 중</b></div>}<button className="primary image-generate-button" onClick={generateImages} disabled={imageWorking}>{imageWorking ? `${imageProgress}/${imageCount}번째 제작 중…` : `${imageCount}장 추가 생성`}</button><small>처음 생성할 이미지 수와 지침은 새 콘텐츠 탭에서 정합니다.</small></div>
       <div className="info-box">각 블록을 직접 고치거나 해당 블록만 Codex로 다시 작성할 수 있습니다.</div>
     </aside></div>
-    <footer><button className="secondary" onClick={onClose}>닫기</button><button className="primary" onClick={save}>수정 내용 저장</button></footer>
+    <footer><button className="secondary" onClick={rewriteShort} disabled={rewriting}>{rewriting ? "짧게 다시 쓰는 중…" : "✦ 전체 글 짧게 다시 쓰기"}</button><button className="secondary" onClick={onClose}>닫기</button><button className="primary" onClick={save}>수정 내용 저장</button></footer>
   </div></div>;
 }

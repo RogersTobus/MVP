@@ -56,10 +56,31 @@ export class CodexCliAdapter implements AiAdapter {
         blocks: { type: "array", items: { type: "object", additionalProperties: false, required: ["type", "label", "text"], properties: { type: { type: "string" }, label: { type: "string" }, text: { type: "string" } } } },
       },
     };
-    const result = parseJson<GeneratedArticle>(await this.run(buildArticlePrompt(input), schema, needsMedicalResearch(input.categoryName)));
+    let result = parseJson<GeneratedArticle>(await this.run(buildArticlePrompt(input), schema, needsMedicalResearch(input.categoryName)));
     if (!result.title || !result.summary || !Array.isArray(result.blocks) || result.blocks.length !== input.blocks.length) {
       throw new Error("Codex 응답 형식이 올바르지 않습니다. 다시 생성해 주세요.");
     }
+    const limits = { short: 1300, standard: 2000, deep: 3100 };
+    const mode = input.lengthMode || "standard";
+    const bodyLength = result.blocks.reduce((total, block, index) => total + (input.blocks[index]?.type === "image" ? 0 : block.text.length), 0);
+    if (bodyLength > limits[mode]) {
+      const target = mode === "short" ? "900~1,200자" : mode === "standard" ? "1,400~1,900자" : "2,200~3,000자";
+      const condensePrompt = `아래 네이버 블로그 원고를 ${target}로 압축하세요.
+
+절대 조건:
+- blocks의 개수, 순서, type은 그대로 유지합니다.
+- image 블록의 text는 그대로 유지합니다.
+- 같은 설명과 결론의 반복, 불필요한 배경 설명, 막연한 권유부터 삭제합니다.
+- 의료 글이라도 원리, 핵심 검사 이유, 판단 기준, 중요한 한계는 남기되 각각 한 번만 설명합니다.
+- 문단은 짧게 유지하고 사실과 주의사항을 새로 만들지 않습니다.
+- JSON 이외의 말은 쓰지 않습니다.
+
+원고:
+${JSON.stringify(result)}`;
+      result = parseJson<GeneratedArticle>(await this.run(condensePrompt, schema, false));
+    }
+    const finalLength = result.blocks.reduce((total, block, index) => total + (input.blocks[index]?.type === "image" ? 0 : block.text.length), 0);
+    if (finalLength > limits[mode]) throw new Error(`AI가 선택한 분량을 지키지 못했습니다. 현재 ${finalLength.toLocaleString()}자이며 목표 상한은 ${limits[mode].toLocaleString()}자입니다. 다시 생성해 주세요.`);
     return result;
   }
 

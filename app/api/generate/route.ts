@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       categoryMemory: category.memory,
       topic: String(body.topic || "").trim(),
       extraInstructions: String(body.extraInstructions || "").trim(),
+      lengthMode: ["short", "standard", "deep"].includes(body.lengthMode) ? body.lengthMode as "short" | "standard" | "deep" : "standard",
       blocks: template.blocks.map(({ type, label, instruction }) => ({ type, label, instruction })),
     };
     if (!input.topic) return NextResponse.json({ error: "글 주제를 입력해 주세요." }, { status: 400 });

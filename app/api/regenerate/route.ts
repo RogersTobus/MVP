@@ -21,6 +21,7 @@ export async function POST(request: Request) {
       categoryMemory: content.category.memory,
       topic: content.topic,
       extraInstructions: body.instruction?.trim() || content.extraInstructions,
+      lengthMode: "standard",
       blocks: content.blocks.map(({ type, label, instruction }) => ({ type, label, instruction })),
       currentTitle: content.title,
       targetIndex,

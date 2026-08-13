@@ -18,6 +18,15 @@ const readabilityRules = `
 - 모바일 화면에서 읽는 네이버 블로그를 기준으로, 의미 없는 한 문장 줄바꿈은 남발하지 않되 긴 글 덩어리는 만들지 마세요.
 `.trim();
 
+function lengthRules(mode: GenerateInput["lengthMode"] = "standard") {
+  const targets = {
+    short: "전체 본문 900~1,200자. 도입·공감·결론은 각각 100~160자, 핵심 설명 블록도 250~400자를 넘기지 마세요.",
+    standard: "전체 본문 1,400~1,900자. 도입·공감·결론은 각각 120~200자, 핵심 설명 블록은 350~550자 안에서 끝내세요.",
+    deep: "전체 본문 2,200~3,000자. 자세히 설명하되 같은 결론과 주의사항을 다른 표현으로 반복하지 마세요.",
+  };
+  return `[글 분량]\n- ${targets[mode]}\n- 글자 수를 채우기 위한 배경 설명, 같은 뜻의 재진술, 막연한 상담 권유를 넣지 마세요.\n- 이미지 블록의 시각 묘사는 본문 글자 수에서 제외합니다.`;
+}
+
 const naverEditingRules = `
 [네이버 블로그 편집 리듬]
 - 완성된 본문은 블록별 답변을 이어 붙인 티가 나지 않게 하나의 글처럼 연결하세요. 앞 블록의 마지막 문장과 다음 블록의 첫 문장이 자연스럽게 이어져야 합니다.
@@ -95,6 +104,7 @@ ${input.blocks.map((b, index) => `${index + 1}. ${b.label} (${b.type})\n지시: 
 ${guardrails}
 
 ${readabilityRules}
+${lengthRules(input.lengthMode)}
 ${naverEditingRules}
 
 ${needsMedicalResearch(input.categoryName) ? medicalResearchRules : ""}
@@ -125,6 +135,7 @@ ${input.currentBlocks.map((b, i) => `${i + 1}. ${b.label}: ${i === input.targetI
 
 ${guardrails}
 ${readabilityRules}
+${lengthRules(input.lengthMode)}
 ${naverEditingRules}
 ${needsMedicalResearch(input.categoryName) ? medicalResearchRules : ""}
 아래 JSON 형식으로만 답하세요: {"text":"새 블록 본문"}`;
