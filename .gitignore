@@ -7,3 +7,4 @@ data/*.db-shm
 work/
 public/references/web-*
 npm-debug.log*
+*.tsbuildinfo
