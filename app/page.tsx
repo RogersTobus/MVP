@@ -18,7 +18,8 @@ type Content = {
 };
 type Settings = { globalMemory: string; globalImageMemory: string; cliCommand: string; cliExtraArgs: string; naverBlogId: string; chromeDebugUrl: string; autoWebReferences: boolean };
 type Data = { settings: Settings; categories: Category[]; templates: Template[]; personas: Persona[]; contents: Content[] };
-type Tab = "library" | "create" | "memory" | "templates" | "settings";
+type StudioMode = "blog" | "cardnews" | "ads";
+type Tab = "library" | "create" | "memory" | "templates" | "autopublish" | "settings";
 
 const blockPalette = [
   ["intro", "도입"], ["empathy", "공감"], ["problem", "문제 제기"], ["core", "핵심 정보"], ["case", "사례"],
@@ -28,7 +29,13 @@ const blockPalette = [
 
 const nav: Array<[Tab, string, string]> = [
   ["library", "▦", "콘텐츠 보관함"], ["create", "＋", "새 콘텐츠"], ["memory", "◎", "메모리"],
-  ["templates", "◫", "구조 템플릿"], ["settings", "⚙", "연결 설정"],
+  ["templates", "◫", "구조 템플릿"], ["autopublish", "↗", "자동 발행"], ["settings", "⚙", "연결 설정"],
+];
+
+const studioModes: Array<[StudioMode, string, string]> = [
+  ["blog", "블로그", "글 작성·이미지·발행"],
+  ["cardnews", "카드뉴스", "슬라이드형 콘텐츠"],
+  ["ads", "광고 소재", "채널별 광고 크리에이티브"],
 ];
 
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
@@ -143,6 +150,7 @@ function dateText(value: string) {
 
 export default function Home() {
   const [data, setData] = useState<Data | null>(null);
+  const [studioMode, setStudioMode] = useState<StudioMode>("blog");
   const [tab, setTab] = useState<Tab>("library");
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
@@ -166,23 +174,36 @@ export default function Home() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark">C</div><div><b>콘텐츠 스튜디오</b><span>블로그 업무 도구</span></div></div>
-        <nav>{nav.map(([key, icon, label]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><i>{icon}</i>{label}</button>)}</nav>
+        {studioMode === "blog" ? <nav>{nav.map(([key, icon, label]) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><i>{icon}</i>{label}{key === "autopublish" && <small className="nav-soon">준비 중</small>}</button>)}</nav> : <div className="future-side-note"><b>{studioMode === "cardnews" ? "카드뉴스 스튜디오" : "광고 소재 스튜디오"}</b><span>기능을 추가할 수 있도록 독립된 작업 공간으로 분리했습니다.</span></div>}
         <div className="sidebar-note"><span className="status-dot" /><div><b>로컬 전용</b><small>데이터는 이 PC에 저장됩니다</small></div></div>
       </aside>
 
       <main className="workspace">
-        <header className="topbar"><div><span className="eyebrow">내 콘텐츠</span><h1>{nav.find(([key]) => key === tab)?.[2]}</h1></div><button className="primary compact" onClick={() => setTab("create")}>새 글 만들기</button></header>
-        {tab === "library" && <Library data={data} contents={filtered} search={search} setSearch={setSearch} filterCategory={filterCategory} setFilterCategory={setFilterCategory} onPreview={setPreview} onRefresh={refresh} flash={flash} setBusy={setBusy} />}
-        {tab === "create" && <CreatePanel data={data} onManageMemory={() => setTab("memory")} onCreated={async (content) => { await refresh(); setPreview(content); setTab("library"); }} busy={busy} setBusy={setBusy} flash={flash} />}
-        {tab === "memory" && <MemoryPanel data={data} onRefresh={refresh} flash={flash} />}
-        {tab === "templates" && <TemplatesPanel data={data} onRefresh={refresh} flash={flash} />}
-        {tab === "settings" && <SettingsPanel data={data} onRefresh={refresh} flash={flash} />}
+        <div className="studio-mode-tabs">{studioModes.map(([key, label, description]) => <button key={key} className={studioMode === key ? "active" : ""} onClick={() => { setStudioMode(key); setPreview(null); }}><b>{label}</b><span>{description}</span>{key !== "blog" && <em>준비 중</em>}</button>)}</div>
+        {studioMode === "blog" ? <>
+          <header className="topbar"><div><span className="eyebrow">블로그 스튜디오</span><h1>{nav.find(([key]) => key === tab)?.[2]}</h1></div>{tab !== "autopublish" && <button className="primary compact" onClick={() => setTab("create")}>새 글 만들기</button>}</header>
+          {tab === "library" && <Library data={data} contents={filtered} search={search} setSearch={setSearch} filterCategory={filterCategory} setFilterCategory={setFilterCategory} onPreview={setPreview} onRefresh={refresh} flash={flash} setBusy={setBusy} />}
+          {tab === "create" && <CreatePanel data={data} onManageMemory={() => setTab("memory")} onCreated={async (content) => { await refresh(); setPreview(content); setTab("library"); }} busy={busy} setBusy={setBusy} flash={flash} />}
+          {tab === "memory" && <MemoryPanel data={data} onRefresh={refresh} flash={flash} />}
+          {tab === "templates" && <TemplatesPanel data={data} onRefresh={refresh} flash={flash} />}
+          {tab === "autopublish" && <AutoPublishPanel />}
+          {tab === "settings" && <SettingsPanel data={data} onRefresh={refresh} flash={flash} />}
+        </> : <FutureWorkspace mode={studioMode} />}
       </main>
-      {preview && <PreviewModal content={preview} data={data} onClose={() => setPreview(null)} onSaved={async (content) => { setPreview(content); await refresh(); }} flash={flash} />}
+      {studioMode === "blog" && preview && <PreviewModal content={preview} data={data} onClose={() => setPreview(null)} onSaved={async (content) => { setPreview(content); await refresh(); }} flash={flash} />}
       {notice && <div className="toast">{notice}</div>}
       {busy && <div className="busy"><div className="spinner" /><b>{busy}</b><span>창을 닫지 말고 잠시 기다려 주세요.</span></div>}
     </div>
   );
+}
+
+function FutureWorkspace({ mode }: { mode: Exclude<StudioMode, "blog"> }) {
+  const cardNews = mode === "cardnews";
+  return <section className="future-workspace"><span className="future-kicker">NEXT STUDIO</span><h1>{cardNews ? "카드뉴스" : "광고 소재"} 작업 공간</h1><p>{cardNews ? "주제와 원고를 카드 단위로 나누고 이미지·문구·비율을 함께 제작하는 기능이 이곳에 들어갑니다." : "캠페인 목표와 채널 규격에 맞춰 카피와 이미지를 여러 버전으로 제작하는 기능이 이곳에 들어갑니다."}</p><div className="future-feature-grid">{(cardNews ? [["카드 구조", "표지부터 CTA까지 카드 순서를 설계"], ["디자인 세트", "폰트·색상·이미지 스타일을 템플릿화"], ["채널 내보내기", "인스타그램·블로그용 비율로 저장"]] : [["캠페인 브리프", "목표·타깃·혜택·금지 표현을 한곳에서 관리"], ["소재 변형", "헤드라인과 이미지를 조합해 여러 안 제작"], ["규격 내보내기", "매체별 크기와 문구 제한에 맞춰 저장"]]).map(([title, text], index) => <article key={title}><i>{String(index + 1).padStart(2, "0")}</i><b>{title}</b><span>{text}</span></article>)}</div><div className="future-ready"><span>작업 공간 준비 완료</span><b>기능은 이후 독립적으로 추가됩니다.</b></div></section>;
+}
+
+function AutoPublishPanel() {
+  return <section className="auto-publish-panel"><div><span className="future-kicker">BLOG AUTOMATION</span><h2>블로그 자동 발행 센터</h2><p>현재는 네이버 작성 화면까지 안전하게 준비하고 마지막 게시 버튼은 직접 누르는 단계입니다. 이후 예약 대기열과 발행 결과 확인 기능을 이곳에 연결합니다.</p></div><div className="auto-publish-flow"><article className="done"><i>1</i><b>콘텐츠 검토</b><span>미리보기와 수정</span></article><article className="done"><i>2</i><b>게시 준비</b><span>글·사진·태그 입력</span></article><article><i>3</i><b>예약 대기열</b><span>날짜와 순서 관리</span></article><article><i>4</i><b>자동 발행</b><span>정상 로그인 세션 활용</span></article><article><i>5</i><b>결과 확인</b><span>성공·실패 기록</span></article></div><div className="warning-box">CAPTCHA나 보안 확인은 우회하지 않습니다. 자동 발행을 추가하더라도 보안 확인이 나타나면 중단하고 사용자 확인을 요청합니다.</div></section>;
 }
 
 function Library({ data, contents, search, setSearch, filterCategory, setFilterCategory, onPreview, onRefresh, flash, setBusy }: {
