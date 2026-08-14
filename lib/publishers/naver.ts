@@ -10,6 +10,17 @@ async function firstVisible(page: Page, selectors: string[]): Promise<Locator | 
   return null;
 }
 
+async function lastVisible(page: Page, selectors: string[]): Promise<Locator | null> {
+  for (const selector of selectors) {
+    const targets = page.locator(selector);
+    for (let index = await targets.count() - 1; index >= 0; index -= 1) {
+      const target = targets.nth(index);
+      if (await target.isVisible().catch(() => false)) return target;
+    }
+  }
+  return null;
+}
+
 async function insertEditable(target: Locator, text: string) {
   await target.click();
   await target.press("Control+A").catch(() => undefined);
@@ -31,7 +42,13 @@ function formattedBlockText(block: PublishBlock, headingIndex: number, medical: 
 }
 
 async function moveToEnd(page: Page, body: Locator) {
-  await body.click();
+  const lastParagraph = await lastVisible(page, [
+    ".se-section-text .se-text-paragraph",
+    ".se-section-text [contenteditable='true']",
+    ".se-component-content [contenteditable='true'][data-placeholder*='내용']",
+  ]);
+  await (lastParagraph || body).click();
+  await page.keyboard.press("End");
   await page.keyboard.press("Control+End");
 }
 
@@ -73,13 +90,27 @@ async function appendText(page: Page, body: Locator, text: string, hasContent: b
 async function uploadImage(page: Page, body: Locator, imagePath: string) {
   await moveToEnd(page, body);
   await page.keyboard.press("Enter");
-  const button = await firstVisible(page, [
+  let button = await firstVisible(page, [
     "button[data-name='image']",
+    "button[data-name='photo']",
     ".se-image-toolbar-button",
     ".se-toolbar-item-image button",
+    ".se-toolbar-item-photo button",
+    "button[class*='image']",
+    "button[class*='photo']",
     "button[aria-label*='사진']",
+    "button[aria-label*='이미지']",
     "button[title*='사진']",
+    "button[title*='이미지']",
   ]);
+  if (!button) {
+    const namedButton = page.getByRole("button", { name: /사진|이미지/ }).first();
+    if (await namedButton.isVisible().catch(() => false)) button = namedButton;
+  }
+  if (!button) {
+    const namedControl = page.getByText(/^(사진|이미지)$/, { exact: true }).first();
+    if (await namedControl.isVisible().catch(() => false)) button = namedControl;
+  }
   if (!button) return false;
 
   const chooserPromise = page.waitForEvent("filechooser", { timeout: 1200 }).catch(() => null);
@@ -120,6 +151,11 @@ export class NaverPublisher implements BlogPublisher {
     const visibleText = (await page.locator("body").innerText().catch(() => "")).toLowerCase();
     if (visibleText.includes("captcha") || visibleText.includes("자동입력 방지")) {
       return { status: "manual_required", message: "보안 확인 화면이 표시되었습니다. 자동화를 중단했으니 사용자가 직접 확인해 주세요.", url: page.url() };
+    }
+    const editorPopup = page.locator(".se-popup-alert-confirm:visible, [data-name*='popup-alert-confirm']:visible").first();
+    if (await editorPopup.isVisible().catch(() => false)) {
+      const popupText = (await editorPopup.innerText().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 120);
+      return { status: "manual_required", message: `네이버 편집기에 확인 팝업이 열려 있습니다${popupText ? `: ${popupText}` : "."} 팝업을 직접 처리한 뒤 다시 시도해 주세요.`, url: page.url() };
     }
 
     const title = await firstVisible(page, [
@@ -165,8 +201,26 @@ export class NaverPublisher implements BlogPublisher {
       }
     }
 
+    const textBlocks = draft.blocks.filter((block) => block.type !== "image" && block.text.trim());
+    let orderVerified = textBlocks.length <= 1;
+    if (textBlocks.length > 1) {
+      const firstSnippet = readableParagraphs(formattedBlockText(textBlocks[0], 0, medical))[0]?.slice(0, 32);
+      const lastBlock = textBlocks[textBlocks.length - 1];
+      const lastParagraphs = readableParagraphs(formattedBlockText(lastBlock, headingIndex, medical));
+      const lastSnippet = lastParagraphs[lastParagraphs.length - 1]?.slice(0, 32);
+      const editorText = await page.locator(".se-section-text").innerText().catch(() => "");
+      const firstPosition = firstSnippet ? editorText.indexOf(firstSnippet) : -1;
+      const lastPosition = lastSnippet ? editorText.indexOf(lastSnippet) : -1;
+      orderVerified = firstPosition >= 0 && lastPosition >= 0 && firstPosition < lastPosition;
+      if (firstPosition >= 0 && lastPosition >= 0 && firstPosition > lastPosition) {
+        return { status: "manual_required", message: "네이버 편집기에 본문 순서가 반대로 입력된 것을 감지해 게시 준비를 중단했습니다. 열린 초안은 사용하지 말고 다시 시도해 주세요.", url: page.url() };
+      }
+    }
+    if (!orderVerified) {
+      return { status: "manual_required", message: "본문은 입력했지만 첫 문단과 마지막 문단의 순서를 자동 확인하지 못했습니다. 열린 작성 화면의 순서를 확인해 주세요.", url: page.url() };
+    }
     if (missedImages > 0) {
-      return { status: "manual_required", message: `본문은 입력했지만 이미지 ${missedImages}장은 네이버 편집기에 자동 첨부하지 못했습니다. 열린 화면에서 사진을 직접 확인해 주세요.`, url: page.url() };
+      return { status: "manual_required", message: `본문 순서는 정상입니다. 다만 이미지 ${missedImages}장은 네이버 편집기에 자동 첨부하지 못했습니다. 열린 화면에서 사진을 직접 확인해 주세요.`, url: page.url() };
     }
     const imageMessage = uploadedImages ? ` 이미지 ${uploadedImages}장도 본문 순서에 맞춰 넣었습니다.` : " 생성된 이미지가 없어 본문만 입력했습니다.";
     return { status: "ready", message: `가독성을 다듬은 본문을 작성 화면에 채웠습니다.${imageMessage} 내용을 확인한 뒤 게시 버튼은 직접 눌러 주세요.`, url: page.url() };

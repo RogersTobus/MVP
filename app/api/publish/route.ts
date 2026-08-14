@@ -35,6 +35,12 @@ export async function POST(request: Request) {
     await db.content.update({ where: { id: content.id }, data: { status: result.status === "ready" ? "publish_ready" : "draft", publishNote: result.message } });
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "게시 준비에 실패했습니다." }, { status: 500 });
+    const message = error instanceof Error ? error.message : "게시 준비에 실패했습니다.";
+    const friendlyMessage = /Target page, context or browser has been closed/i.test(message)
+      ? "게시 준비 중 전용 Chrome 창이 닫혔습니다. Chrome 창을 열어 둔 상태에서 다시 시도해 주세요."
+      : /intercepts pointer events|se-popup-dim/i.test(message)
+        ? "네이버 편집기의 확인 팝업이 입력 화면을 가리고 있습니다. 열린 Chrome에서 팝업을 처리한 뒤 다시 시도해 주세요."
+      : message;
+    return NextResponse.json({ error: friendlyMessage }, { status: 500 });
   }
 }
