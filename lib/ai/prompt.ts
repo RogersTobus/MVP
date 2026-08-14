@@ -88,6 +88,9 @@ ${input.topic}
 [추가 지시]
 ${input.extraInstructions || "없음"}
 
+[글쓴이 페르소나]
+${input.personaName ? `${input.personaName}\n${input.personaInstruction || ""}` : "별도 설정 없음"}
+
 [문체]
 - 보고서처럼 딱딱한 ‘~합니다’ 문장을 연속해서 쓰지 말고, 독자에게 설명해 주는 자연스러운 해요체를 중심으로 작성하세요.
 - 정확성과 신뢰를 유지하되 ‘~할 수 있어요’, ‘~부터 살펴볼게요’, ‘~인지 확인해 보세요’처럼 문장을 부드럽게 연결하세요.
@@ -128,6 +131,7 @@ ${input.categoryMemory || "없음"}
 [앞뒤 맥락]
 ${input.currentBlocks.map((b, i) => `${i + 1}. ${b.label}: ${i === input.targetIndex ? "[다시 작성할 부분]" : b.text}`).join("\n")}
 [추가 지시] ${input.extraInstructions || "없음"}
+[글쓴이 페르소나] ${input.personaName ? `${input.personaName}: ${input.personaInstruction || ""}` : "별도 설정 없음"}
 
 [문체]
 - 앞뒤 블록의 어투와 맞추고, 딱딱한 보고서 문장보다 자연스러운 해요체로 부드럽게 설명하세요.

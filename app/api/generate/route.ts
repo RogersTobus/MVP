@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAiAdapter } from "@/lib/ai";
-import { contentInclude, db, ensureSeed, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
+import { contentInclude, db, ensureSeed, getPersonas, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
 import { formatBlogBlockText } from "@/lib/content-format";
 
 export const runtime = "nodejs";
@@ -23,12 +23,16 @@ export async function POST(request: Request) {
     if (!settings) return NextResponse.json({ error: "AI 설정을 찾지 못했습니다. 설정 화면에서 다시 저장해 주세요." }, { status: 404 });
     if (!category) return NextResponse.json({ error: "선택한 카테고리를 찾지 못했습니다." }, { status: 404 });
     if (!template || template.blocks.length === 0) return NextResponse.json({ error: "선택한 글 구조에 블록이 없습니다." }, { status: 404 });
+    const persona = (await getPersonas()).find((item) => item.id === Number(body.personaId));
+    const personaSnapshot = persona ? `[페르소나: ${persona.name}]\n${persona.instruction}` : "";
     const input = {
       globalMemory: settings.globalMemory,
       categoryName: category.name,
       categoryMemory: category.memory,
       topic: String(body.topic || "").trim(),
-      extraInstructions: String(body.extraInstructions || "").trim(),
+      extraInstructions: "",
+      personaName: persona?.name,
+      personaInstruction: persona?.instruction,
       lengthMode: ["short", "standard", "deep"].includes(body.lengthMode) ? body.lengthMode as "short" | "standard" | "deep" : "standard",
       blocks: template.blocks.map(({ type, label, instruction }) => ({ type, label, instruction })),
     };
@@ -44,8 +48,8 @@ export async function POST(request: Request) {
         title: generated.title,
         summary: generated.summary,
         body: formattedBlocks.filter((_, index) => input.blocks[index]?.type !== "image").map((block) => block.text).join("\n\n"),
-        extraInstructions: input.extraInstructions,
-        imageInstructions: String(body.imageInstructions || "").trim(),
+        extraInstructions: personaSnapshot,
+        imageInstructions: "",
         imageReferences: JSON.stringify(imageReferences),
         imageReferenceSources: JSON.stringify(imageReferenceSources),
         blocks: { create: input.blocks.map((block, index) => ({ ...block, label: formattedBlocks[index]?.label?.trim() || block.label, text: formattedBlocks[index]?.text || "", sortOrder: index })) },

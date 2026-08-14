@@ -33,8 +33,26 @@ async function ensureGuidanceColumns() {
   try { await db.$executeRawUnsafe(`ALTER TABLE "AppSetting" ADD COLUMN "autoWebReferences" BOOLEAN NOT NULL DEFAULT true`); } catch { /* Column already exists. */ }
 }
 
+export type StoredPersona = { id: number; name: string; instruction: string; createdAt: string; updatedAt: string };
+
+export async function ensurePersonaTable() {
+  await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "Persona" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "name" TEXT NOT NULL UNIQUE,
+    "instruction" TEXT NOT NULL DEFAULT '',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+}
+
+export async function getPersonas() {
+  await ensurePersonaTable();
+  return db.$queryRawUnsafe<StoredPersona[]>(`SELECT * FROM "Persona" ORDER BY "createdAt" ASC, "id" ASC`);
+}
+
 export async function ensureSeed() {
   await ensureGuidanceColumns();
+  await ensurePersonaTable();
   await db.appSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, globalMemory: defaultGuides.globalMemory.join("\n"), globalImageMemory: defaultGuides.globalImageMemory.join("\n") } });
   if ((await db.category.count()) === 0) {
     await db.category.createMany({ data: starterCategories });

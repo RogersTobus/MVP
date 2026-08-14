@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type Category = { id: number; name: string; memory: string; imageMemory: string; color: string };
 type Block = { id?: number; type: string; label: string; instruction: string; text?: string; sortOrder?: number };
 type Template = { id: number; name: string; description: string; blocks: Block[] };
+type Persona = { id: number; name: string; instruction: string };
 type ContentImage = { id: number; contentId: number; prompt: string; url: string; style: string; placementOrder: number; createdAt: string };
 type ImageReferenceSource = { url: string; kind: "manual" | "web"; sourcePageUrl?: string; originalImageUrl?: string; title?: string };
 type Content = {
@@ -12,7 +13,7 @@ type Content = {
   imageReferenceSources: ImageReferenceSource[]; status: string; publishNote: string; createdAt: string; updatedAt: string; category: Category; blocks: Block[]; images?: ContentImage[];
 };
 type Settings = { globalMemory: string; globalImageMemory: string; cliCommand: string; cliExtraArgs: string; naverBlogId: string; chromeDebugUrl: string; autoWebReferences: boolean };
-type Data = { settings: Settings; categories: Category[]; templates: Template[]; contents: Content[] };
+type Data = { settings: Settings; categories: Category[]; templates: Template[]; personas: Persona[]; contents: Content[] };
 type Tab = "library" | "create" | "memory" | "templates" | "settings";
 
 const blockPalette = [
@@ -212,13 +213,16 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
   const [categoryId, setCategoryId] = useState(data.categories[0]?.id || 0);
   const [templateId, setTemplateId] = useState(data.templates[0]?.id || 0);
   const [topic, setTopic] = useState("");
-  const [extraInstructions, setExtraInstructions] = useState("");
   const [lengthMode, setLengthMode] = useState<"short" | "standard" | "deep">("standard");
-  const [imageInstructions, setImageInstructions] = useState("");
   const [imageReferences, setImageReferences] = useState<string[]>([]);
   const [referenceUploading, setReferenceUploading] = useState(false);
+  const [personas, setPersonas] = useState<Persona[]>(data.personas || []);
+  const [personaId, setPersonaId] = useState(data.personas?.[0]?.id || 0);
+  const [personaModal, setPersonaModal] = useState(false);
+  const [personaName, setPersonaName] = useState("");
+  const [personaInstruction, setPersonaInstruction] = useState("");
   const selectedCategory = data.categories.find((c) => c.id === categoryId) || data.categories[0];
-  const [expandedInstruction, setExpandedInstruction] = useState<"topic" | "image" | null>(null);
+  const selectedPersona = personas.find((persona) => persona.id === personaId);
   const selected = data.templates.find((t) => t.id === templateId);
   const [autoImageCount, setAutoImageCount] = useState(selected?.blocks.filter((block) => block.type === "image").length || 0);
   useEffect(() => { setAutoImageCount(selected?.blocks.filter((block) => block.type === "image").length || 0); }, [templateId]);
@@ -245,26 +249,28 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
   }, [imageReferences.length]);
-  const expandedTitle = expandedInstruction === "image" ? "이미지 생성 지침" : "이번 주제 추가 지침";
-  const expandedDescription = expandedInstruction === "image" ? "이번 글과 함께 생성할 모든 이미지에 적용됩니다." : "현재 생성할 글에만 적용되고 별도로 저장되지 않습니다.";
-  const expandedValue = expandedInstruction === "image" ? imageInstructions : extraInstructions;
-  const setExpandedValue = (value: string) => {
-    if (expandedInstruction === "image") setImageInstructions(value);
-    else setExtraInstructions(value);
+  const addPersona = async () => {
+    try {
+      const created = await api<Persona>("/api/personas", { method: "POST", body: JSON.stringify({ name: personaName, instruction: personaInstruction }) });
+      setPersonas([...personas, created]); setPersonaId(created.id); setPersonaModal(false); setPersonaName(""); setPersonaInstruction(""); flash("페르소나를 추가했습니다.");
+    } catch (error) { flash((error as Error).message); }
   };
-  const applyExpandedInstruction = () => {
-    flash(expandedInstruction === "image" ? "이미지 생성 지침에 적용했습니다." : "이번 주제 추가 지침에 적용했습니다.");
-    setExpandedInstruction(null);
+  const removePersona = async () => {
+    if (!selectedPersona || !confirm(`‘${selectedPersona.name}’ 페르소나를 삭제할까요?`)) return;
+    try {
+      await api(`/api/personas/${selectedPersona.id}`, { method: "DELETE" });
+      const next = personas.filter((persona) => persona.id !== selectedPersona.id); setPersonas(next); setPersonaId(next[0]?.id || 0); flash("페르소나를 삭제했습니다.");
+    } catch (error) { flash((error as Error).message); }
   };
   const generate = async () => {
     if (!topic.trim()) return flash("글 주제를 입력해 주세요.");
     setBusy("Codex가 글을 작성하고 있습니다");
     try {
-      const content = await api<Content>("/api/generate", { method: "POST", body: JSON.stringify({ categoryId, templateId, topic, extraInstructions, imageInstructions, imageReferences, lengthMode }) });
+      const content = await api<Content>("/api/generate", { method: "POST", body: JSON.stringify({ categoryId, templateId, topic, personaId, imageReferences, lengthMode }) });
       let completedContent = content;
       if (autoImageCount > 0) {
         try {
-          const imageResult = await generateImagesOneByOne({ contentId: content.id, count: autoImageCount, style: "clean", imageInstructions }, (current, total) => setBusy(`${current}/${total}번째 블로그 이미지 제작 중`));
+          const imageResult = await generateImagesOneByOne({ contentId: content.id, count: autoImageCount, style: "clean" }, (current, total) => setBusy(`${current}/${total}번째 블로그 이미지 제작 중`));
           completedContent = { ...content, ...imageResult };
         } catch (imageError) { flash(`글은 저장했지만 이미지 생성에 실패했습니다: ${(imageError as Error).message}`); }
       }
@@ -278,9 +284,8 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
       <div className="instruction-stack">
         <section className="instruction-card common readonly"><div className="instruction-title"><div><span>메모리에서 자동 적용</span><b>전체 공통 지침</b></div><div className="instruction-actions"><button type="button" className="expand" onClick={onManageMemory}>관리</button></div></div><div className="memory-summary">{data.settings.globalMemory || "설정된 공통 지침이 없습니다."}</div><small>모든 글에 자동 적용돼요.</small></section>
         <section className="instruction-card category readonly"><div className="instruction-title"><div><span>선택 카테고리에 자동 적용</span><b>{selectedCategory?.name || "선택 카테고리"} 지침</b></div><div className="instruction-actions"><button type="button" className="expand" onClick={onManageMemory}>관리</button></div></div><div className="memory-summary">{selectedCategory?.memory || "설정된 카테고리 지침이 없습니다."}</div><small>선택한 카테고리에서만 적용돼요.</small></section>
-        <section className="instruction-card topic"><div className="instruction-title"><div><span>이번 글만</span><b>주제 추가 지침 <em>선택</em></b></div><div className="instruction-actions"><button type="button" className="expand" onClick={() => setExpandedInstruction("topic")}>크게 보기</button></div></div><textarea className="compact-instruction" rows={1} wrap="off" value={extraInstructions} onChange={(e) => setExtraInstructions(e.target.value)} placeholder="이번 글에 꼭 포함할 내용, 원하는 분량, 특별히 피할 표현" /><small>현재 주제로 생성하는 이 글에만 적용돼요.</small></section>
-        <section className="instruction-card image-instruction"><div className="instruction-title"><div><span>이번 글 이미지 전용</span><b>추가 이미지 지침 <em>선택</em></b></div><div className="instruction-actions"><button type="button" className="expand" onClick={() => setExpandedInstruction("image")}>크게 보기</button></div></div><textarea className="compact-instruction" rows={1} wrap="off" value={imageInstructions} onChange={(e) => setImageInstructions(e.target.value)} placeholder="공통·카테고리 지침에 덧붙일 장면이나 피할 요소" /><small>저장된 이미지 지침 위에 이번 글 요청을 추가해요.</small></section>
       </div>
+      <section className="persona-picker"><div><span>글쓴이 설정</span><b>페르소나</b><small>{selectedPersona?.instruction || "페르소나를 추가하면 글의 말투와 관점을 일관되게 적용해요."}</small></div><div className="persona-controls"><select value={personaId} onChange={(event) => setPersonaId(Number(event.target.value))}><option value={0}>페르소나 없음</option>{personas.map((persona) => <option key={persona.id} value={persona.id}>{persona.name}</option>)}</select><button type="button" onClick={() => setPersonaModal(true)}>＋ 추가</button><button type="button" className="persona-delete" onClick={removePersona} disabled={!selectedPersona}>삭제</button></div></section>
       <section className="reference-uploader" tabIndex={0} onPaste={(event) => { const files = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/")); if (files.length) { event.preventDefault(); event.stopPropagation(); void uploadReferenceFiles(files); } }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void uploadReferenceFiles(Array.from(event.dataTransfer.files)); }}>
         <div className="reference-head"><div><span>이미지 생성 참고용</span><b>레퍼런스 이미지 <em>선택 · 최대 5장</em></b><small>캡처 후 이 박스를 누르고 Ctrl+V 하거나 파일을 끌어다 놓으세요.</small></div><label className="reference-pick">{referenceUploading ? "올리는 중…" : "파일 선택"}<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple disabled={referenceUploading || imageReferences.length >= 5} onChange={(event) => { void uploadReferenceFiles(Array.from(event.target.files || [])); event.target.value = ""; }} /></label></div>
         {imageReferences.length ? <div className="reference-grid">{imageReferences.map((url, index) => <figure key={url}><img src={url} alt={`레퍼런스 이미지 ${index + 1}`} /><button type="button" aria-label={`레퍼런스 이미지 ${index + 1} 제거`} onClick={() => setImageReferences(imageReferences.filter((item) => item !== url))}>×</button><figcaption>참고 {index + 1}</figcaption></figure>)}</div> : <div className="reference-empty"><b>이미지를 여기에 붙여넣기</b><span>JPG · PNG · WebP · GIF, 장당 10MB 이하</span></div>}
@@ -293,7 +298,7 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
       <div className="create-image-count"><div><b>이미지 자동 생성</b><small>글과 함께 만들 이미지 수를 선택하세요.</small></div><select value={autoImageCount} onChange={(event) => setAutoImageCount(Number(event.target.value))}><option value={0}>생성 안 함</option><option value={1}>1장</option><option value={2}>2장</option><option value={3}>3장</option><option value={4}>4장</option><option value={5}>5장</option></select></div>
       <button className="primary generate" onClick={generate} disabled={!!busy}>✦ 콘텐츠 생성하기</button><small className="center-note">생성 결과는 자동 게시되지 않고 보관함에 저장됩니다.</small>
     </div>
-  </section>{expandedInstruction && <div className="instruction-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setExpandedInstruction(null); }}><div className="instruction-modal"><header><div><span>이번 글만 적용</span><h2>{expandedTitle}</h2><p>{expandedDescription}</p></div><button type="button" onClick={() => setExpandedInstruction(null)}>×</button></header><textarea autoFocus value={expandedValue} onChange={(event) => setExpandedValue(event.target.value)} placeholder={expandedInstruction === "image" ? "예: 파란색과 흰색 중심, 사람 얼굴은 제외, 자연광 사진, 이미지 안에 글자 금지" : "AI가 이해할 수 있도록 자유롭게 자세히 작성하세요."} /><footer><span>{expandedValue.length.toLocaleString()}자</span><div><button type="button" className="secondary" onClick={() => setExpandedInstruction(null)}>닫기</button><button type="button" className="primary" onClick={applyExpandedInstruction}>적용</button></div></footer></div></div>}</>;
+  </section>{personaModal && <div className="instruction-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPersonaModal(false); }}><div className="instruction-modal persona-modal"><header><div><span>재사용 가능한 글쓴이 설정</span><h2>새 페르소나 추가</h2><p>이름과 말투, 관점, 전문성의 범위를 자유롭게 적어주세요.</p></div><button type="button" onClick={() => setPersonaModal(false)}>×</button></header><label>페르소나 이름<input autoFocus value={personaName} onChange={(event) => setPersonaName(event.target.value)} placeholder="예: 친절한 병원 정보 에디터" /></label><label>페르소나 지침<textarea value={personaInstruction} onChange={(event) => setPersonaInstruction(event.target.value)} placeholder="예: 비의료인의 위치를 지키면서 어려운 의료 정보를 쉬운 해요체로 설명합니다. 핵심 답을 먼저 주고 과장이나 체험담은 만들지 않습니다." /></label><footer><span>{personaInstruction.length.toLocaleString()}자</span><div><button type="button" className="secondary" onClick={() => setPersonaModal(false)}>닫기</button><button type="button" className="primary" onClick={addPersona}>저장</button></div></footer></div></div>}</>;
 }
 
 function MemoryPanel({ data, onRefresh, flash }: { data: Data; onRefresh: () => Promise<void>; flash: (v: string) => void }) {
@@ -395,8 +400,7 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
     </section><aside className="preview-info"><PublishingBlueprint content={draft} /><h3 className="info-heading">글 정보</h3>
       <label>카테고리<select value={draft.categoryId} onChange={(event) => { const categoryId = Number(event.target.value); setDraft({ ...draft, categoryId, category: data.categories.find((category) => category.id === categoryId)! }); }}>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
       <label>주제<textarea rows={4} value={draft.topic} onChange={(event) => setDraft({ ...draft, topic: event.target.value })} /></label>
-      <label>추가 지시<textarea rows={5} value={draft.extraInstructions} onChange={(event) => setDraft({ ...draft, extraInstructions: event.target.value })} /></label>
-      <label>이번 글 이미지 지침<textarea rows={4} value={draft.imageInstructions} onChange={(event) => setDraft({ ...draft, imageInstructions: event.target.value })} placeholder="공통·카테고리 이미지 지침에 덧붙일 요청" /></label>
+      {draft.extraInstructions.startsWith("[페르소나:") && <div className="applied-persona"><span>적용 페르소나</span><b>{draft.extraInstructions.match(/^\[페르소나:\s*([^\]]+)\]/)?.[1]}</b><p>{draft.extraInstructions.replace(/^\[페르소나:[^\]]+\]\s*/, "")}</p></div>}
       <div className={`preview-references ${draft.imageReferences.length ? "" : "empty"}`}><b>이미지 레퍼런스 출처</b>{draft.imageReferences.length > 0 ? <><div>{draft.imageReferences.map((url, index) => { const source = (draft.imageReferenceSources || []).find((item) => item.url === url); return <figure key={url}><img src={url} alt={`적용 중인 레퍼런스 ${index + 1}`} /><figcaption><strong>{source?.kind === "web" ? sourceHost(source.sourcePageUrl || source.originalImageUrl) : "사용자 제공"}</strong>{source?.title && <span title={source.title}>{source.title}</span>}<nav>{source?.sourcePageUrl && <a href={source.sourcePageUrl} target="_blank" rel="noreferrer">출처 페이지</a>}{source?.originalImageUrl && <a href={source.originalImageUrl} target="_blank" rel="noreferrer">원본 이미지</a>}{source?.kind === "web" && !source.sourcePageUrl && !source.originalImageUrl && <em>출처 미기록</em>}</nav></figcaption></figure>; })}</div><small>자동 선정된 웹 이미지는 출처 링크를 보존합니다. 원본을 게시하지 않고 생성 참고용으로만 사용합니다.</small></> : <div className="reference-source-empty"><strong>참고한 외부 이미지 없음</strong><span>이 글의 이미지는 저장된 웹·사용자 레퍼런스 없이 글 내용과 이미지 지침만으로 생성됐습니다.</span></div>}</div>
       <div className="image-generator"><div><span className="image-badge">추가 생성</span><h3>이미지 추가 제작</h3><p>{imageBlocks.length ? `구조 템플릿에 지정된 ${imageBlocks.length}개 위치를 기준으로 추가 시안을 만들어요.` : "저장된 글의 제목과 본문을 읽고 이미지를 추가해요."}</p></div>{imageBlocks.length > 0 && <div className="detected-positions"><b>템플릿 이미지 위치</b>{imageBlocks.map((block, index) => <span key={block.id || index}>{index + 1}. {block.label}</span>)}</div>}<label>추가할 이미지 수<select value={imageCount} onChange={(event) => setImageCount(Number(event.target.value))}><option value={1}>1장</option><option value={2}>2장</option><option value={3}>3장</option><option value={4}>4장</option><option value={5}>5장</option></select></label><label>스타일<select value={imageStyle} onChange={(event) => setImageStyle(event.target.value)}><option value="clean">깔끔한 에디토리얼</option><option value="photo">사실적인 사진</option><option value="illustration">친근한 일러스트</option><option value="infographic">미니멀 인포그래픽</option></select></label>{imageWorking && <div className="image-progress"><div><span style={{ width: `${(imageProgress / imageCount) * 100}%` }} /></div><b>{imageProgress}/{imageCount}번째 이미지 제작 중</b></div>}<button className="primary image-generate-button" onClick={generateImages} disabled={imageWorking}>{imageWorking ? `${imageProgress}/${imageCount}번째 제작 중…` : `${imageCount}장 추가 생성`}</button><small>처음 생성할 이미지 수와 지침은 새 콘텐츠 탭에서 정합니다.</small></div>
       <div className="info-box">각 블록을 직접 고치거나 해당 블록만 Codex로 다시 작성할 수 있습니다.</div>

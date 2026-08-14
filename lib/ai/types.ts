@@ -10,6 +10,8 @@ export type GenerateInput = {
   categoryMemory: string;
   topic: string;
   extraInstructions: string;
+  personaName?: string;
+  personaInstruction?: string;
   lengthMode?: "short" | "standard" | "deep";
   blocks: PromptBlock[];
 };
