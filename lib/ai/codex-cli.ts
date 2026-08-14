@@ -53,12 +53,12 @@ export class CodexCliAdapter implements AiAdapter {
       type: "object", additionalProperties: false, required: ["title", "summary", "hashtags", "blocks"],
       properties: {
         title: { type: "string" }, summary: { type: "string" },
-        hashtags: { type: "array", minItems: 5, maxItems: 10, items: { type: "string" } },
+        hashtags: { type: "array", minItems: 8, maxItems: 8, items: { type: "string" } },
         blocks: { type: "array", items: { type: "object", additionalProperties: false, required: ["type", "label", "text"], properties: { type: { type: "string" }, label: { type: "string" }, text: { type: "string" } } } },
       },
     };
     let result = parseJson<GeneratedArticle>(await this.run(buildArticlePrompt(input), schema, needsMedicalResearch(input.categoryName)));
-    if (!result.title || !result.summary || !Array.isArray(result.hashtags) || !Array.isArray(result.blocks) || result.blocks.length !== input.blocks.length) {
+    if (!result.title || !result.summary || !Array.isArray(result.hashtags) || result.hashtags.length !== 8 || !Array.isArray(result.blocks) || result.blocks.length !== input.blocks.length) {
       throw new Error("Codex 응답 형식이 올바르지 않습니다. 다시 생성해 주세요.");
     }
     const limits = { short: 1300, standard: 2000, deep: 3100 };

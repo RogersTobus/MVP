@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAiAdapter } from "@/lib/ai";
-import { contentInclude, db, ensureSeed, getPersonas, normalizeHashtags, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
+import { completeTopicHashtags, contentInclude, db, ensureSeed, getPersonas, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
 import { formatBlogBlockText } from "@/lib/content-format";
 
 export const runtime = "nodejs";
@@ -52,13 +52,13 @@ export async function POST(request: Request) {
         imageInstructions: "",
         imageReferences: JSON.stringify(imageReferences),
         imageReferenceSources: JSON.stringify(imageReferenceSources),
-        hashtags: JSON.stringify(normalizeHashtags(generated.hashtags, [category.name, input.topic])),
+        hashtags: JSON.stringify(completeTopicHashtags(generated.hashtags, input.topic, generated.title)),
         blocks: { create: input.blocks.map((block, index) => ({ ...block, label: formattedBlocks[index]?.label?.trim() || block.label, text: formattedBlocks[index]?.text || "", sortOrder: index })) },
       },
       include: contentInclude,
     });
     const parsedReferences = parseImageReferences(content.imageReferences);
-    return NextResponse.json({ ...content, hashtags: normalizeHashtags(generated.hashtags), imageReferences: parsedReferences, imageReferenceSources: parseImageReferenceSources(content.imageReferenceSources, parsedReferences) });
+    return NextResponse.json({ ...content, hashtags: completeTopicHashtags(generated.hashtags, input.topic, generated.title), imageReferences: parsedReferences, imageReferenceSources: parseImageReferenceSources(content.imageReferenceSources, parsedReferences) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "글 생성에 실패했습니다.";
     console.error("[content-generate]", error);

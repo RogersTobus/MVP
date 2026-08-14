@@ -131,8 +131,28 @@ export function parseImageReferences(value: string) {
 
 export function normalizeHashtags(value: unknown, fallback: string[] = []): string[] {
   const source = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\s,]+/) : fallback;
-  const normalized = [...new Set(source.map((item) => String(item).trim().replace(/^#+/, "").replace(/[^0-9A-Za-z가-힣_]/g, "")).filter(Boolean))].slice(0, 12);
+  const normalized = [...new Set(source.map((item) => String(item).trim().replace(/^#+/, "").replace(/[^0-9A-Za-z가-힣_]/g, "")).filter(Boolean))].slice(0, 8);
   return normalized.length || fallback.length === 0 ? normalized : normalizeHashtags(fallback);
+}
+
+export function buildTopicHashtags(topic: string, title = ""): string[] {
+  const subject = `${topic} ${title}`.trim();
+  const domainTags = /스마일라식|라식|라섹|시력교정|안과|눈\s*건강/i.test(subject)
+    ? ["스마일라식", "라식", "라섹", "시력교정", "시력교정술", "안과", "안과검사", "눈건강"]
+    : /병원|의료|진료|시술|수술|질환|검사/i.test(subject)
+      ? [topic, "건강정보", "의료정보", "병원정보", "검사정보", "치료정보", "건강관리", "진료정보"]
+      : /투자|주식|재테크|자산|경제/i.test(subject)
+        ? [topic, "투자", "재테크", "자산관리", "경제", "주식", "투자공부", "경제공부"]
+        : /경영|MBA|비즈니스|사업|창업|COO|재무/i.test(subject)
+          ? [topic, "경영", "비즈니스", "MBA", "기업경영", "경영전략", "조직관리", "재무관리"]
+          : /AI|인공지능|자동화|코딩|바이브코딩/i.test(subject)
+            ? [topic, "AI", "인공지능", "업무자동화", "생성형AI", "AI활용", "바이브코딩", "자동화"]
+            : [topic, `${topic}정보`, `${topic}가이드`, `${topic}비교`, `${topic}추천`, `${topic}팁`, `${topic}정리`, `${topic}방법`];
+  return normalizeHashtags(domainTags);
+}
+
+export function completeTopicHashtags(value: unknown, topic: string, title = ""): string[] {
+  return normalizeHashtags([...normalizeHashtags(value), ...buildTopicHashtags(topic, title)]);
 }
 
 export function parseHashtags(value: string, fallback: string[] = []) {

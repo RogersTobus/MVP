@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { contentInclude, db, normalizeHashtags, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
+import { completeTopicHashtags, contentInclude, db, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
 
 export async function PUT(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
@@ -19,7 +19,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
       imageInstructions: body.imageInstructions ?? "",
       imageReferences: JSON.stringify(imageReferences),
       imageReferenceSources: JSON.stringify(imageReferenceSources),
-      hashtags: JSON.stringify(normalizeHashtags(body.hashtags, [body.topic])),
+      hashtags: JSON.stringify(completeTopicHashtags(body.hashtags, body.topic, body.title)),
       status: body.status ?? "draft",
       blocks: {
         deleteMany: {},
@@ -29,7 +29,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
     include: contentInclude,
   });
   const parsedReferences = parseImageReferences(content.imageReferences);
-  return NextResponse.json({ ...content, hashtags: normalizeHashtags(body.hashtags, [content.category.name, content.topic]), imageReferences: parsedReferences, imageReferenceSources: parseImageReferenceSources(content.imageReferenceSources, parsedReferences) });
+  return NextResponse.json({ ...content, hashtags: completeTopicHashtags(body.hashtags, content.topic, content.title), imageReferences: parsedReferences, imageReferenceSources: parseImageReferenceSources(content.imageReferenceSources, parsedReferences) });
 }
 
 export async function DELETE(_: Request, context: { params: Promise<{ id: string }> }) {

@@ -57,6 +57,10 @@ function sourceHost(value?: string) {
   try { return new URL(value).hostname.replace(/^www\./, ""); } catch { return "원본 출처"; }
 }
 
+function parseHashtagInput(value: string) {
+  return [...new Set(value.split(/[\s,]+/).map((tag) => tag.trim().replace(/^#+/, "").replace(/[^0-9A-Za-z가-힣_]/g, "")).filter(Boolean))].slice(0, 8);
+}
+
 function BlogText({ text }: { text: string }) {
   return <>{text.split(/\n{2,}/).map((paragraph, index) => {
     const trimmed = paragraph.trim();
@@ -384,6 +388,7 @@ function SettingsPanel({ data, onRefresh, flash }: { data: Data; onRefresh: () =
 
 function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Content; data: Data; onClose: () => void; onSaved: (c: Content) => void; flash: (v: string) => void }) {
   const [draft, setDraft] = useState<Content>({ ...content, blocks: content.blocks.map((block) => ({ ...block })), images: content.images || [] });
+  const [hashtagText, setHashtagText] = useState(content.hashtags.map((tag) => `#${tag}`).join(" "));
   const [working, setWorking] = useState(0);
   const [imageWorking, setImageWorking] = useState(false);
   const [imageProgress, setImageProgress] = useState(0);
@@ -394,9 +399,10 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
   const imageBlocks = draft.blocks.filter((block) => block.type === "image");
   const save = async () => {
     try {
-      const saved = await api<Content>(`/api/contents/${draft.id}`, { method: "PUT", body: JSON.stringify(draft) });
+      const nextDraft = { ...draft, hashtags: parseHashtagInput(hashtagText) };
+      const saved = await api<Content>(`/api/contents/${draft.id}`, { method: "PUT", body: JSON.stringify(nextDraft) });
       const merged = { ...saved, images: draft.images || [] };
-      onSaved(merged); setDraft(merged); flash("수정 내용을 저장했습니다.");
+      onSaved(merged); setDraft(merged); setHashtagText(merged.hashtags.map((tag) => `#${tag}`).join(" ")); flash("수정 내용을 저장했습니다.");
     } catch (error) { flash((error as Error).message); }
   };
   const regenerate = async (block: Block) => {
@@ -437,7 +443,7 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
     </section><aside className="preview-info"><PublishingBlueprint content={draft} /><h3 className="info-heading">글 정보</h3>
       <label>카테고리<select value={draft.categoryId} onChange={(event) => { const categoryId = Number(event.target.value); setDraft({ ...draft, categoryId, category: data.categories.find((category) => category.id === categoryId)! }); }}>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
       <label>주제<textarea rows={4} value={draft.topic} onChange={(event) => setDraft({ ...draft, topic: event.target.value })} /></label>
-      <label>해시태그<input value={draft.hashtags.join(" ")} onChange={(event) => setDraft({ ...draft, hashtags: [...new Set(event.target.value.split(/[\s,]+/).map((tag) => tag.replace(/^#+/, "").replace(/[^0-9A-Za-z가-힣_]/g, "")).filter(Boolean))].slice(0, 12) })} placeholder="스마일라식 시력교정 안과검사" /><small className="field-help">띄어쓰기로 구분 · 게시글 마지막에 자동 입력</small></label>
+      <label>주제 관련 해시태그 8개<input value={hashtagText} onChange={(event) => setHashtagText(event.target.value)} onBlur={() => setDraft({ ...draft, hashtags: parseHashtagInput(hashtagText) })} placeholder="#스마일라식 #라식 #라섹 #시력교정" /><small className="field-help">카테고리명이 아닌 주제의 상위·핵심 검색어 8개 · 입력 중 한글 조합을 그대로 유지합니다.</small></label>
       {draft.extraInstructions.startsWith("[페르소나:") && <div className="applied-persona"><span>적용 페르소나</span><b>{draft.extraInstructions.match(/^\[페르소나:\s*([^\]]+)\]/)?.[1]}</b><p>{draft.extraInstructions.replace(/^\[페르소나:[^\]]+\]\s*/, "")}</p></div>}
       <div className={`preview-references ${draft.imageReferences.length ? "" : "empty"}`}><b>이미지 레퍼런스 출처</b>{draft.imageReferences.length > 0 ? <><div>{draft.imageReferences.map((url, index) => { const source = (draft.imageReferenceSources || []).find((item) => item.url === url); return <figure key={url}><img src={url} alt={`적용 중인 레퍼런스 ${index + 1}`} /><figcaption><strong>{source?.kind === "web" ? sourceHost(source.sourcePageUrl || source.originalImageUrl) : "사용자 제공"}</strong>{source?.title && <span title={source.title}>{source.title}</span>}<nav>{source?.sourcePageUrl && <a href={source.sourcePageUrl} target="_blank" rel="noreferrer">출처 페이지</a>}{source?.originalImageUrl && <a href={source.originalImageUrl} target="_blank" rel="noreferrer">원본 이미지</a>}{source?.kind === "web" && !source.sourcePageUrl && !source.originalImageUrl && <em>출처 미기록</em>}</nav></figcaption></figure>; })}</div><small>자동 선정된 웹 이미지는 출처 링크를 보존합니다. 원본을 게시하지 않고 생성 참고용으로만 사용합니다.</small></> : <div className="reference-source-empty"><strong>참고한 외부 이미지 없음</strong><span>이 글의 이미지는 저장된 웹·사용자 레퍼런스 없이 글 내용과 이미지 지침만으로 생성됐습니다.</span></div>}</div>
       <div className="image-generator"><div><span className="image-badge">추가 생성</span><h3>이미지 추가 제작</h3><p>{imageBlocks.length ? `구조 템플릿에 지정된 ${imageBlocks.length}개 위치를 기준으로 추가 시안을 만들어요.` : "저장된 글의 제목과 본문을 읽고 이미지를 추가해요."}</p></div>{imageBlocks.length > 0 && <div className="detected-positions"><b>템플릿 이미지 위치</b>{imageBlocks.map((block, index) => <span key={block.id || index}>{index + 1}. {block.label}</span>)}</div>}<label>추가할 이미지 수<select value={imageCount} onChange={(event) => setImageCount(Number(event.target.value))}><option value={1}>1장</option><option value={2}>2장</option><option value={3}>3장</option><option value={4}>4장</option><option value={5}>5장</option></select></label><label>스타일<select value={imageStyle} onChange={(event) => setImageStyle(event.target.value)}><option value="clean">깔끔한 에디토리얼</option><option value="photo">사실적인 사진</option><option value="illustration">친근한 일러스트</option><option value="infographic">미니멀 인포그래픽</option></select></label>{imageWorking && <div className="image-progress"><div><span style={{ width: `${(imageProgress / imageCount) * 100}%` }} /></div><b>{imageProgress}/{imageCount}번째 이미지 제작 중</b></div>}<button className="primary image-generate-button" onClick={generateImages} disabled={imageWorking}>{imageWorking ? `${imageProgress}/${imageCount}번째 제작 중…` : `${imageCount}장 추가 생성`}</button><small>처음 생성할 이미지 수와 지침은 새 콘텐츠 탭에서 정합니다.</small></div>

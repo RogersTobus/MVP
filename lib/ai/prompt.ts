@@ -126,8 +126,8 @@ ${needsMedicalResearch(input.categoryName) ? medicalResearchRules : ""}
 - 추상적인 칭찬이나 권유를 관찰 가능한 장면·구체적인 판단 기준으로 바꾸되 입력과 조사에 없는 경험이나 사실을 새로 만들지 마세요.
 - 모바일에서 한눈에 읽히도록 긴 문장을 나누고 문단 간 여백을 확보하되, 모든 문장을 한 줄씩 쪼개지는 마세요.
 
-아래 JSON 형식으로만 답하세요. blocks는 이미지 블록을 포함해 입력 구조와 같은 순서와 개수여야 합니다. hashtags는 본문과 실제로 관련된 검색어 5~10개이며 # 기호 없이 작성하세요.
-{"title":"제목","summary":"2문장 이내 요약","hashtags":["핵심검색어","연관검색어"],"blocks":[{"type":"intro","label":"도입","text":"본문"}]}`;
+아래 JSON 형식으로만 답하세요. blocks는 이미지 블록을 포함해 입력 구조와 같은 순서와 개수여야 합니다. hashtags는 정확히 8개를 작성하세요. 앱 내부 카테고리명을 기계적으로 넣지 말고, 이번 주제와 직접 관련된 상위 검색 범주부터 구체적인 핵심 검색어 순으로 고르세요. 중복·문장형·과도한 세부 조합어는 피하고 # 기호는 쓰지 마세요.
+{"title":"제목","summary":"2문장 이내 요약","hashtags":["상위검색범주1","상위검색범주2","핵심검색어3","핵심검색어4","연관검색어5","연관검색어6","연관검색어7","연관검색어8"],"blocks":[{"type":"intro","label":"도입","text":"본문"}]}`;
 }
 
 export function buildRegeneratePrompt(input: GenerateInput & { currentTitle: string; targetIndex: number; currentBlocks: GeneratedArticle["blocks"] }) {
