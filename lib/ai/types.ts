@@ -30,8 +30,26 @@ export type PersonaStyleSample = {
   text: string;
 };
 
+export type CreativePlanInput = {
+  kind: "cardnews" | "ads";
+  prompt: string;
+  ratio: string;
+  itemCount: number;
+  destination: "canva" | "instagram" | "export";
+  referenceCount: number;
+};
+
+export type CreativePlan = {
+  title: string;
+  concept: string;
+  items: Array<{ headline: string; body: string; visualDirection: string }>;
+  caption: string;
+  exportChecklist: string[];
+};
+
 export interface AiAdapter {
   generate(input: GenerateInput): Promise<GeneratedArticle>;
   regenerateBlock(input: GenerateInput & { currentTitle: string; targetIndex: number; currentBlocks: GeneratedArticle["blocks"] }): Promise<{ text: string }>;
+  generateCreativePlan(input: CreativePlanInput): Promise<CreativePlan>;
   test(): Promise<string>;
 }

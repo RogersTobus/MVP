@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { resolveCliCommand } from "@/lib/cli-command";
 import { buildArticlePrompt, buildRegeneratePrompt, needsMedicalResearch, parseJson } from "./prompt";
-import type { AiAdapter, GenerateInput, GeneratedArticle, PersonaStyleSample } from "./types";
+import type { AiAdapter, CreativePlan, CreativePlanInput, GenerateInput, GeneratedArticle, PersonaStyleSample } from "./types";
 
 function splitArgs(value: string) {
   return [...value.matchAll(/(?:[^\s"]+|"[^"]*")+/g)].map((m) => m[0].replace(/^"|"$/g, ""));
@@ -89,6 +89,43 @@ ${JSON.stringify(result)}`;
     const schema = { type: "object", additionalProperties: false, required: ["text"], properties: { text: { type: "string" } } };
     const result = parseJson<{ text: string }>(await this.run(buildRegeneratePrompt(input), schema, needsMedicalResearch(input.categoryName)));
     if (!result.text) throw new Error("새 블록 본문이 비어 있습니다.");
+    return result;
+  }
+
+  async generateCreativePlan(input: CreativePlanInput) {
+    const schema = {
+      type: "object",
+      additionalProperties: false,
+      required: ["title", "concept", "items", "caption", "exportChecklist"],
+      properties: {
+        title: { type: "string" },
+        concept: { type: "string" },
+        items: { type: "array", minItems: input.itemCount, maxItems: input.itemCount, items: { type: "object", additionalProperties: false, required: ["headline", "body", "visualDirection"], properties: { headline: { type: "string" }, body: { type: "string" }, visualDirection: { type: "string" } } } },
+        caption: { type: "string" },
+        exportChecklist: { type: "array", minItems: 3, maxItems: 6, items: { type: "string" } },
+      },
+    };
+    const kindRule = input.kind === "cardnews"
+      ? `정확히 ${input.itemCount}장의 카드뉴스를 기획하세요. 1장은 강한 표지, 중간 카드는 한 장당 한 메시지, 마지막 장은 자연스러운 CTA로 구성합니다.`
+      : `정확히 ${input.itemCount}개의 광고 소재 변형을 기획하세요. 각 소재는 서로 다른 훅과 시각 방향을 사용하되 입력에 없는 효능·실적·후기를 만들지 않습니다.`;
+    const prompt = `한국어 콘텐츠 제작 기획안을 만드세요.
+
+[종류] ${input.kind === "cardnews" ? "카드뉴스" : "광고 소재"}
+[사용자 프롬프트]
+${input.prompt}
+[비율] ${input.ratio}
+[결과 목적] ${input.destination}
+[첨부 레퍼런스] ${input.referenceCount}장
+
+${kindRule}
+- Canva에 그대로 옮길 수 있도록 headline은 짧게, body는 모바일에서 읽기 쉽게 작성합니다.
+- visualDirection은 레이아웃, 피사체, 배경, 색감, 여백을 구체적으로 지시합니다.
+- 레퍼런스 원본을 복제하거나 로고·문구를 베끼지 말고 분위기와 구성 원리만 참고합니다.
+- 확인되지 않은 수치, 후기, 비교 우위, 의료·투자 효과를 만들지 않습니다.
+- caption은 Instagram 게시문으로 바로 다듬을 수 있는 자연스러운 초안으로 작성합니다.
+- JSON만 반환합니다.`;
+    const result = parseJson<CreativePlan>(await this.run(prompt, schema, false));
+    if (!result.title || result.items.length !== input.itemCount) throw new Error("제작 기획안 형식이 올바르지 않습니다.");
     return result;
   }
 

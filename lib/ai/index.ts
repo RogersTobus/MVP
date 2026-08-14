@@ -4,4 +4,4 @@ export function createAiAdapter(settings: { cliCommand: string; cliExtraArgs: st
   return new CodexCliAdapter(settings.cliCommand, settings.cliExtraArgs);
 }
 
-export type { AiAdapter, GenerateInput, GeneratedArticle, PromptBlock } from "./types";
+export type { AiAdapter, CreativePlan, CreativePlanInput, GenerateInput, GeneratedArticle, PromptBlock } from "./types";

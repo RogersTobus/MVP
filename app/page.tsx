@@ -18,6 +18,7 @@ type Content = {
 };
 type Settings = { globalMemory: string; globalImageMemory: string; cliCommand: string; cliExtraArgs: string; naverBlogId: string; chromeDebugUrl: string; autoWebReferences: boolean };
 type Data = { settings: Settings; categories: Category[]; templates: Template[]; personas: Persona[]; contents: Content[] };
+type CreativePlan = { title: string; concept: string; items: Array<{ headline: string; body: string; visualDirection: string }>; caption: string; exportChecklist: string[] };
 type StudioMode = "blog" | "cardnews" | "ads";
 type Tab = "library" | "create" | "memory" | "templates" | "autopublish" | "settings";
 
@@ -198,8 +199,57 @@ export default function Home() {
 }
 
 function FutureWorkspace({ mode }: { mode: Exclude<StudioMode, "blog"> }) {
+  return <CreativeWorkspace mode={mode} />;
+}
+
+function CreativeWorkspace({ mode }: { mode: Exclude<StudioMode, "blog"> }) {
   const cardNews = mode === "cardnews";
-  return <section className="future-workspace"><span className="future-kicker">NEXT STUDIO</span><h1>{cardNews ? "카드뉴스" : "광고 소재"} 작업 공간</h1><p>{cardNews ? "주제와 원고를 카드 단위로 나누고 이미지·문구·비율을 함께 제작하는 기능이 이곳에 들어갑니다." : "캠페인 목표와 채널 규격에 맞춰 카피와 이미지를 여러 버전으로 제작하는 기능이 이곳에 들어갑니다."}</p><div className="future-feature-grid">{(cardNews ? [["카드 구조", "표지부터 CTA까지 카드 순서를 설계"], ["디자인 세트", "폰트·색상·이미지 스타일을 템플릿화"], ["채널 내보내기", "인스타그램·블로그용 비율로 저장"]] : [["캠페인 브리프", "목표·타깃·혜택·금지 표현을 한곳에서 관리"], ["소재 변형", "헤드라인과 이미지를 조합해 여러 안 제작"], ["규격 내보내기", "매체별 크기와 문구 제한에 맞춰 저장"]]).map(([title, text], index) => <article key={title}><i>{String(index + 1).padStart(2, "0")}</i><b>{title}</b><span>{text}</span></article>)}</div><div className="future-ready"><span>작업 공간 준비 완료</span><b>기능은 이후 독립적으로 추가됩니다.</b></div></section>;
+  const [references, setReferences] = useState<string[]>([]);
+  const [prompt, setPrompt] = useState("");
+  const [ratio, setRatio] = useState(cardNews ? "4:5" : "1:1");
+  const [itemCount, setItemCount] = useState(cardNews ? 7 : 4);
+  const [destination, setDestination] = useState<"canva" | "instagram" | "export">("canva");
+  const [plan, setPlan] = useState<CreativePlan | null>(null);
+  const [working, setWorking] = useState("");
+  const [message, setMessage] = useState("");
+
+  const upload = async (files: File[]) => {
+    const accepted = files.filter((file) => file.type.startsWith("image/")).slice(0, 8 - references.length);
+    if (!accepted.length) return;
+    setWorking("레퍼런스를 올리고 있습니다");
+    try {
+      const form = new FormData();
+      accepted.forEach((file) => form.append("images", file));
+      const response = await fetch("/api/reference-images", { method: "POST", body: form });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || "레퍼런스를 올리지 못했습니다.");
+      setReferences((current) => [...current, ...body.images.map((image: { url: string }) => image.url)].slice(0, 8));
+      setMessage("레퍼런스를 추가했습니다.");
+    } catch (error) { setMessage((error as Error).message); } finally { setWorking(""); }
+  };
+  const generate = async () => {
+    setWorking("Codex가 제작 기획안을 만들고 있습니다"); setMessage("");
+    try {
+      setPlan(await api<CreativePlan>("/api/creative-plan", { method: "POST", body: JSON.stringify({ kind: mode, prompt, ratio, itemCount, destination, referenceCount: references.length }) }));
+      setMessage("Canva에 옮길 제작 기획안을 만들었습니다.");
+    } catch (error) { setMessage((error as Error).message); } finally { setWorking(""); }
+  };
+  const briefText = plan ? [`${plan.title}\n${plan.concept}`, ...plan.items.map((item, index) => `\n${String(index + 1).padStart(2, "0")} ${item.headline}\n${item.body}\n[디자인] ${item.visualDirection}`), `\n[Instagram 캡션]\n${plan.caption}`, `\n[내보내기 확인]\n${plan.exportChecklist.map((item) => `- ${item}`).join("\n")}`].join("\n") : "";
+  const download = () => {
+    if (!plan) return;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([briefText], { type: "text/plain;charset=utf-8" }));
+    link.download = `${cardNews ? "cardnews" : "ad-creative"}-brief.txt`;
+    link.click(); URL.revokeObjectURL(link.href); setMessage("제작 브리프를 내려받았습니다.");
+  };
+  const openCanva = async () => {
+    if (!plan) return;
+    await navigator.clipboard.writeText(briefText);
+    window.open("https://www.canva.com/", "_blank", "noopener,noreferrer");
+    setMessage("Canva용 브리프를 복사했습니다. 열린 Canva에 붙여넣으세요.");
+  };
+
+  return <section className="creative-workspace"><header><span className="future-kicker">{cardNews ? "CARD NEWS" : "AD CREATIVE"}</span><h1>{cardNews ? "카드뉴스" : "광고 소재"} 만들기</h1><p>레퍼런스를 붙이고 원하는 결과를 설명하면 Codex가 Canva 제작용 구조와 문구를 정리합니다.</p></header><div className="creative-grid"><div className="creative-inputs"><section className="creative-reference" tabIndex={0} onPaste={(event) => { const files = Array.from(event.clipboardData.files); if (files.length) { event.preventDefault(); void upload(files); } }} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }}><div><b>레퍼런스 복붙</b><span>이 박스를 누르고 Ctrl+V · 최대 8장</span></div><label>{working.includes("레퍼런스") ? "업로드 중…" : "파일 선택"}<input type="file" accept="image/*" multiple onChange={(event) => { void upload(Array.from(event.target.files || [])); event.target.value = ""; }} /></label>{references.length ? <div className="creative-reference-grid">{references.map((url, index) => <figure key={url}><img src={url} alt={`레퍼런스 ${index + 1}`} /><button onClick={() => setReferences(references.filter((item) => item !== url))}>×</button></figure>)}</div> : <div className="creative-reference-empty"><b>이미지를 여기에 붙여넣으세요</b><span>구도와 분위기만 참고하고 원본은 복제하지 않습니다.</span></div>}</section><label>제작 프롬프트<textarea rows={8} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={cardNews ? "예: 스마일라식 검사 과정을 일반인이 이해하기 쉽게 7장 카드뉴스로 만들어줘. 차분한 병원 정보 톤." : "예: 30대 직장인 대상 MBA 스터디 모집 광고. 과장 없이 실무 적용성을 강조한 소재를 만들어줘."} /></label><div className="creative-options"><label>비율<select value={ratio} onChange={(event) => setRatio(event.target.value)}><option value="1:1">1:1 정사각형</option><option value="4:5">4:5 Instagram 피드</option><option value="9:16">9:16 스토리·릴스</option><option value="16:9">16:9 가로형</option></select></label><label>{cardNews ? "카드 수" : "소재 안 수"}<select value={itemCount} onChange={(event) => setItemCount(Number(event.target.value))}>{(cardNews ? [5, 7, 8, 10] : [3, 4, 5, 6]).map((count) => <option key={count} value={count}>{count}{cardNews ? "장" : "개 안"}</option>)}</select></label><label>다음 단계<select value={destination} onChange={(event) => setDestination(event.target.value as typeof destination)}><option value="canva">Canva 편집</option><option value="instagram">Instagram 게시용</option><option value="export">파일 내보내기</option></select></label></div><button className="primary creative-generate" onClick={generate} disabled={!!working}>{working || "제작 기획안 생성"}</button>{message && <p className="creative-message">{message}</p>}</div><aside className="creative-output">{plan ? <><div className="creative-output-head"><span>CANVA BRIEF</span><h2>{plan.title}</h2><p>{plan.concept}</p></div><div className="creative-cards">{plan.items.map((item, index) => <article key={`${item.headline}-${index}`}><i>{String(index + 1).padStart(2, "0")}</i><b>{item.headline}</b><p>{item.body}</p><small>{item.visualDirection}</small></article>)}</div><div className="creative-actions"><button className="primary" onClick={openCanva}>브리프 복사 후 Canva 열기</button><button className="secondary" onClick={download}>{destination === "instagram" ? "Instagram용 브리프 내보내기" : "제작 파일 내보내기"}</button></div></> : <div className="creative-output-empty"><div>✦</div><b>제작 결과가 여기에 표시됩니다</b><span>레퍼런스와 프롬프트를 입력한 뒤 기획안을 생성하세요.</span></div>}</aside></div></section>;
 }
 
 function AutoPublishPanel() {

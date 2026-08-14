@@ -2,6 +2,36 @@ import { chromium, type Locator, type Page } from "playwright-core";
 import type { BlogPublisher, PublishBlock, PublishDraft, PublishResult } from "./types";
 import { ensureChromeDebugSession } from "./chrome-debug";
 
+const EDITOR_SETTLE_MS = 450;
+
+async function editorText(page: Page) {
+  return (await page.locator(".se-component").allTextContents()).join("\n");
+}
+
+async function waitForText(page: Page, text: string, timeoutMs = 8000) {
+  const snippet = text.replace(/\s+/g, " ").trim().slice(0, 28);
+  if (!snippet) return true;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const current = (await editorText(page)).replace(/\s+/g, " ");
+    if (current.includes(snippet)) {
+      await page.waitForTimeout(EDITOR_SETTLE_MS);
+      return true;
+    }
+    await page.waitForTimeout(180);
+  }
+  return false;
+}
+
+async function waitForCountIncrease(page: Page, locator: Locator, before: number, timeoutMs = 12000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await locator.count() > before) return true;
+    await page.waitForTimeout(200);
+  }
+  return false;
+}
+
 async function firstVisible(page: Page, selectors: string[]): Promise<Locator | null> {
   for (const selector of selectors) {
     const target = page.locator(selector).first();
@@ -82,12 +112,15 @@ async function appendText(page: Page, body: Locator, text: string, hasContent: b
       await page.keyboard.press("Enter");
     }
     await page.keyboard.insertText(paragraph);
+    if (!await waitForText(page, paragraph)) throw new Error(`본문 문단이 편집기에 반영되지 않아 다음 작업을 중단했습니다: ${paragraph.slice(0, 24)}`);
     hasContent = true;
   }
   return hasContent;
 }
 
 async function uploadImage(page: Page, body: Locator, imagePath: string) {
+  const imageComponents = page.locator(".se-component-image, .se-section-image");
+  const imageCountBefore = await imageComponents.count();
   await moveToEnd(page, body);
   await page.keyboard.press("Enter");
   let button = await firstVisible(page, [
@@ -123,11 +156,14 @@ async function uploadImage(page: Page, body: Locator, imagePath: string) {
     if (await fileInput.count() === 0) return false;
     await fileInput.setInputFiles(imagePath);
   }
-  await page.waitForTimeout(1600);
-  return true;
+  const uploaded = await waitForCountIncrease(page, imageComponents, imageCountBefore, 15000);
+  if (uploaded) await page.waitForTimeout(EDITOR_SETTLE_MS);
+  return uploaded;
 }
 
 async function insertNaverSticker(page: Page, body: Locator) {
+  const stickerComponents = page.locator(".se-component-sticker, .se-section-sticker");
+  const stickerCountBefore = await stickerComponents.count();
   await moveToEnd(page, body);
   await page.keyboard.press("Enter");
   const button = await firstVisible(page, [
@@ -150,11 +186,14 @@ async function insertNaverSticker(page: Page, body: Locator) {
     return false;
   }
   await sticker.click().catch(() => undefined);
-  await page.waitForTimeout(700);
-  return true;
+  const inserted = await waitForCountIncrease(page, stickerComponents, stickerCountBefore, 10000);
+  if (inserted) await page.waitForTimeout(EDITOR_SETTLE_MS);
+  return inserted;
 }
 
 async function appendQuotationHeading(page: Page, body: Locator, label: string, hasContent: boolean) {
+  const quotationComponents = page.locator(".se-component-quotation, .se-section-quotation");
+  const quotationCountBefore = await quotationComponents.count();
   const button = await firstVisible(page, [
     "button[data-name='quotation']",
     ".se-toolbar-item-quotation button",
@@ -175,15 +214,19 @@ async function appendQuotationHeading(page: Page, body: Locator, label: string, 
     "[class*='quotation_popup']:visible button",
   ]);
   if (style) await style.click().catch(() => undefined);
+  const componentCreated = await waitForCountIncrease(page, quotationComponents, quotationCountBefore, 8000);
+  if (!componentCreated) {
+    await page.keyboard.press("Escape").catch(() => undefined);
+    return false;
+  }
   const target = await lastVisible(page, [
     ".se-section-quotation [contenteditable='true']",
-    ".se-section-text .se-text-paragraph",
-    ".se-component-content [contenteditable='true']",
   ]);
   if (!target) return false;
   await target.click();
   await page.keyboard.insertText(label);
-  return true;
+  const labelInserted = await waitForText(page, label, 5000);
+  return labelInserted;
 }
 
 export class NaverPublisher implements BlogPublisher {
@@ -247,8 +290,10 @@ export class NaverPublisher implements BlogPublisher {
       if (await uploadImage(page, body, imagePath)) uploadedImages += 1;
       else missedImages += 1;
       hasContent = true;
+      await page.waitForTimeout(EDITOR_SETTLE_MS);
     }
-    for (const block of draft.blocks) {
+    for (let blockIndex = 0; blockIndex < draft.blocks.length; blockIndex += 1) {
+      const block = draft.blocks[blockIndex];
       if (block.type !== "image") {
         const showHeading = headingTypes.has(block.type) && !internalLabels.has(block.label.trim());
         const quotationInserted = showHeading ? await appendQuotationHeading(page, body, block.label.trim(), hasContent) : false;
@@ -259,12 +304,19 @@ export class NaverPublisher implements BlogPublisher {
         }
         if (showHeading) headingIndex += 1;
         if (!stickerInserted && block.text.trim()) stickerInserted = await insertNaverSticker(page, body);
+        const verificationParagraphs = readableParagraphs(block.text);
+        const verificationText = verificationParagraphs[verificationParagraphs.length - 1] || block.label;
+        if (!await waitForText(page, verificationText)) {
+          return { status: "manual_required", message: `${blockIndex + 1}번째 블록 '${block.label}'이 편집기에 완전히 반영되지 않아 다음 블록 입력을 중단했습니다. 열린 화면을 확인한 뒤 다시 시도해 주세요.`, url: page.url() };
+        }
       }
       for (const imagePath of block.imagePaths) {
         if (await uploadImage(page, body, imagePath)) uploadedImages += 1;
         else missedImages += 1;
         hasContent = true;
+        await page.waitForTimeout(EDITOR_SETTLE_MS);
       }
+      await page.waitForTimeout(EDITOR_SETTLE_MS);
     }
 
     if (draft.hashtags.length > 0) {
