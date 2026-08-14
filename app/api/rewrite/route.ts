@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAiAdapter } from "@/lib/ai";
-import { contentInclude, db, getContentImages, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
+import { contentInclude, db, getContentImages, normalizeHashtags, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
 import { formatBlogBlockText } from "@/lib/content-format";
 
 export const runtime = "nodejs";
@@ -27,11 +27,11 @@ export async function POST(request: Request) {
     const formatted = generated.blocks.map((block, index) => input.blocks[index]?.type === "image" ? block : { ...block, text: formatBlogBlockText(block.text) });
     await db.$transaction([
       ...content.blocks.map((block, index) => db.contentBlock.update({ where: { id: block.id }, data: { label: formatted[index]?.label?.trim() || block.label, text: formatted[index]?.text || "" } })),
-      db.content.update({ where: { id: content.id }, data: { title: generated.title, summary: generated.summary, body: formatted.filter((_, index) => input.blocks[index]?.type !== "image").map((block) => block.text).join("\n\n"), status: "draft" } }),
+      db.content.update({ where: { id: content.id }, data: { title: generated.title, summary: generated.summary, hashtags: JSON.stringify(normalizeHashtags(generated.hashtags, [content.category.name, content.topic])), body: formatted.filter((_, index) => input.blocks[index]?.type !== "image").map((block) => block.text).join("\n\n"), status: "draft" } }),
     ]);
     const updated = await db.content.findUniqueOrThrow({ where: { id: content.id }, include: contentInclude });
     const imageReferences = parseImageReferences(updated.imageReferences);
-    return NextResponse.json({ ...updated, images: await getContentImages(updated.id), imageReferences, imageReferenceSources: parseImageReferenceSources(updated.imageReferenceSources, imageReferences) });
+    return NextResponse.json({ ...updated, hashtags: normalizeHashtags(generated.hashtags), images: await getContentImages(updated.id), imageReferences, imageReferenceSources: parseImageReferenceSources(updated.imageReferenceSources, imageReferences) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "글을 짧게 다시 쓰지 못했습니다." }, { status: 500 });
   }

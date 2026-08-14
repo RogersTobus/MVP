@@ -101,6 +101,7 @@ model Content {
   imageInstructions String        @default("")
   imageReferences   String        @default("[]")
   imageReferenceSources String    @default("[]")
+  hashtags         String         @default("[]")
   status           String         @default("draft")
   publishNote      String         @default("")
   createdAt        DateTime       @default(now())

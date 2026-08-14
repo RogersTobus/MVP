@@ -19,6 +19,7 @@ export type GenerateInput = {
 export type GeneratedArticle = {
   title: string;
   summary: string;
+  hashtags: string[];
   blocks: Array<{ type: string; label: string; text: string }>;
 };
 

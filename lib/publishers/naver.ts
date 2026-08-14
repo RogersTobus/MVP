@@ -127,6 +127,65 @@ async function uploadImage(page: Page, body: Locator, imagePath: string) {
   return true;
 }
 
+async function insertNaverSticker(page: Page, body: Locator) {
+  await moveToEnd(page, body);
+  await page.keyboard.press("Enter");
+  const button = await firstVisible(page, [
+    "button[data-name='sticker']",
+    ".se-toolbar-item-sticker button",
+    "button[aria-label*='스티커']",
+    "button[title*='스티커']",
+  ]) || (await page.getByRole("button", { name: /스티커/ }).first().isVisible().catch(() => false) ? page.getByRole("button", { name: /스티커/ }).first() : null);
+  if (!button) return false;
+  await button.click().catch(() => undefined);
+  await page.waitForTimeout(500);
+  const sticker = await firstVisible(page, [
+    ".se-popup-sticker:visible img",
+    ".se-popup-sticker:visible [role='button']",
+    ".se-popup-sticker:visible button",
+    "[class*='sticker_popup']:visible img",
+  ]);
+  if (!sticker) {
+    await page.keyboard.press("Escape").catch(() => undefined);
+    return false;
+  }
+  await sticker.click().catch(() => undefined);
+  await page.waitForTimeout(700);
+  return true;
+}
+
+async function appendQuotationHeading(page: Page, body: Locator, label: string, hasContent: boolean) {
+  const button = await firstVisible(page, [
+    "button[data-name='quotation']",
+    ".se-toolbar-item-quotation button",
+    "button[aria-label*='인용구']",
+    "button[title*='인용구']",
+  ]);
+  if (!button) return false;
+  await moveToEnd(page, body);
+  if (hasContent) {
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Enter");
+  }
+  await button.click().catch(() => undefined);
+  await page.waitForTimeout(350);
+  const style = await firstVisible(page, [
+    ".se-popup-quotation:visible [data-value]",
+    ".se-popup-quotation:visible button",
+    "[class*='quotation_popup']:visible button",
+  ]);
+  if (style) await style.click().catch(() => undefined);
+  const target = await lastVisible(page, [
+    ".se-section-quotation [contenteditable='true']",
+    ".se-section-text .se-text-paragraph",
+    ".se-component-content [contenteditable='true']",
+  ]);
+  if (!target) return false;
+  await target.click();
+  await page.keyboard.insertText(label);
+  return true;
+}
+
 export class NaverPublisher implements BlogPublisher {
   constructor(private blogId: string, private debugUrl: string) {}
 
@@ -181,6 +240,7 @@ export class NaverPublisher implements BlogPublisher {
     let uploadedImages = 0;
     let missedImages = 0;
     let headingIndex = 0;
+    let stickerInserted = false;
     const medical = /병원|진료|의료/.test(draft.categoryName);
 
     for (const imagePath of draft.coverImagePaths) {
@@ -191,14 +251,24 @@ export class NaverPublisher implements BlogPublisher {
     for (const block of draft.blocks) {
       if (block.type !== "image") {
         const showHeading = headingTypes.has(block.type) && !internalLabels.has(block.label.trim());
-        hasContent = await appendText(page, body, formattedBlockText(block, headingIndex, medical), hasContent);
+        const quotationInserted = showHeading ? await appendQuotationHeading(page, body, block.label.trim(), hasContent) : false;
+        if (quotationInserted) {
+          hasContent = await appendText(page, body, block.text.trim(), true);
+        } else {
+          hasContent = await appendText(page, body, formattedBlockText(block, headingIndex, medical), hasContent);
+        }
         if (showHeading) headingIndex += 1;
+        if (!stickerInserted && block.text.trim()) stickerInserted = await insertNaverSticker(page, body);
       }
       for (const imagePath of block.imagePaths) {
         if (await uploadImage(page, body, imagePath)) uploadedImages += 1;
         else missedImages += 1;
         hasContent = true;
       }
+    }
+
+    if (draft.hashtags.length > 0) {
+      hasContent = await appendText(page, body, draft.hashtags.map((tag) => `#${tag.replace(/^#+/, "")}`).join(" "), hasContent);
     }
 
     const textBlocks = draft.blocks.filter((block) => block.type !== "image" && block.text.trim());
@@ -223,6 +293,7 @@ export class NaverPublisher implements BlogPublisher {
       return { status: "manual_required", message: `본문 순서는 정상입니다. 다만 이미지 ${missedImages}장은 네이버 편집기에 자동 첨부하지 못했습니다. 열린 화면에서 사진을 직접 확인해 주세요.`, url: page.url() };
     }
     const imageMessage = uploadedImages ? ` 이미지 ${uploadedImages}장도 본문 순서에 맞춰 넣었습니다.` : " 생성된 이미지가 없어 본문만 입력했습니다.";
-    return { status: "ready", message: `가독성을 다듬은 본문을 작성 화면에 채웠습니다.${imageMessage} 내용을 확인한 뒤 게시 버튼은 직접 눌러 주세요.`, url: page.url() };
+    const effectMessage = ` 해시태그 ${draft.hashtags.length}개를 붙였고, 스티커는 ${stickerInserted ? "도입 뒤에 넣었습니다" : "편집기에서 자동 선택하지 못해 미리보기 위치만 참고해 주세요"}.`;
+    return { status: "ready", message: `가독성을 다듬은 본문을 작성 화면에 채웠습니다.${imageMessage}${effectMessage} 내용을 확인한 뒤 게시 버튼은 직접 눌러 주세요.`, url: page.url() };
   }
 }

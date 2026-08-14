@@ -30,6 +30,7 @@ async function ensureGuidanceColumns() {
   try { await db.$executeRawUnsafe(`ALTER TABLE "Content" ADD COLUMN "imageInstructions" TEXT NOT NULL DEFAULT ''`); } catch { /* Column already exists. */ }
   try { await db.$executeRawUnsafe(`ALTER TABLE "Content" ADD COLUMN "imageReferences" TEXT NOT NULL DEFAULT '[]'`); } catch { /* Column already exists. */ }
   try { await db.$executeRawUnsafe(`ALTER TABLE "Content" ADD COLUMN "imageReferenceSources" TEXT NOT NULL DEFAULT '[]'`); } catch { /* Column already exists. */ }
+  try { await db.$executeRawUnsafe(`ALTER TABLE "Content" ADD COLUMN "hashtags" TEXT NOT NULL DEFAULT '[]'`); } catch { /* Column already exists. */ }
   try { await db.$executeRawUnsafe(`ALTER TABLE "AppSetting" ADD COLUMN "autoWebReferences" BOOLEAN NOT NULL DEFAULT true`); } catch { /* Column already exists. */ }
 }
 
@@ -126,6 +127,16 @@ export function parseImageReferences(value: string) {
     const parsed = JSON.parse(value);
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && item.startsWith("/references/")).slice(0, 5) : [];
   } catch { return []; }
+}
+
+export function normalizeHashtags(value: unknown, fallback: string[] = []): string[] {
+  const source = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[\s,]+/) : fallback;
+  const normalized = [...new Set(source.map((item) => String(item).trim().replace(/^#+/, "").replace(/[^0-9A-Za-z가-힣_]/g, "")).filter(Boolean))].slice(0, 12);
+  return normalized.length || fallback.length === 0 ? normalized : normalizeHashtags(fallback);
+}
+
+export function parseHashtags(value: string, fallback: string[] = []) {
+  try { return normalizeHashtags(JSON.parse(value), fallback); } catch { return normalizeHashtags(value, fallback); }
 }
 
 export type ImageReferenceSource = {

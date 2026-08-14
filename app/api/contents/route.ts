@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { contentInclude, db } from "@/lib/db";
+import { contentInclude, db, normalizeHashtags } from "@/lib/db";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -11,9 +11,10 @@ export async function POST(request: Request) {
       summary: body.summary ?? "",
       body: body.body ?? "",
       extraInstructions: body.extraInstructions ?? "",
+      hashtags: JSON.stringify(Array.isArray(body.hashtags) ? body.hashtags : []),
       blocks: { create: (body.blocks || []).map((block: { type: string; label: string; instruction?: string; text?: string }, index: number) => ({ ...block, instruction: block.instruction || "", text: block.text || "", sortOrder: index })) },
     },
     include: contentInclude,
   });
-  return NextResponse.json(content);
+  return NextResponse.json({ ...content, hashtags: normalizeHashtags(body.hashtags, [content.category.name, content.topic]) });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { contentInclude, db } from "@/lib/db";
+import { contentInclude, db, parseHashtags } from "@/lib/db";
 import { getContentImages } from "@/lib/db";
 import { NaverPublisher } from "@/lib/publishers/naver";
 import { existsSync } from "node:fs";
@@ -24,6 +24,7 @@ export async function POST(request: Request) {
       title: content.title,
       categoryName: content.category.name,
       coverImagePaths: usableImages.filter((image) => image.placementOrder < 0).map((image) => image.imagePath),
+      hashtags: parseHashtags(content.hashtags, [content.category.name, content.topic]),
       blocks: content.blocks.map((block) => ({
         type: block.type,
         label: block.label,

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAiAdapter } from "@/lib/ai";
-import { contentInclude, db, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
+import { contentInclude, db, parseHashtags, parseImageReferences, parseImageReferenceSources } from "@/lib/db";
 import { formatBlogBlockText } from "@/lib/content-format";
 
 export const runtime = "nodejs";
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const refreshed = await db.content.findUniqueOrThrow({ where: { id: content.id }, include: contentInclude });
     const updated = await db.content.update({ where: { id: content.id }, data: { body: refreshed.blocks.filter((block) => block.type !== "image").map((block) => block.text).join("\n\n") }, include: contentInclude });
     const imageReferences = parseImageReferences(updated.imageReferences);
-    return NextResponse.json({ ...updated, imageReferences, imageReferenceSources: parseImageReferenceSources(updated.imageReferenceSources, imageReferences) });
+    return NextResponse.json({ ...updated, hashtags: parseHashtags(updated.hashtags, [updated.category.name, updated.topic]), imageReferences, imageReferenceSources: parseImageReferenceSources(updated.imageReferenceSources, imageReferences) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "블록 재생성에 실패했습니다." }, { status: 500 });
   }

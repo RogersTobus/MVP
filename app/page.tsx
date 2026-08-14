@@ -14,7 +14,7 @@ type ContentImage = { id: number; contentId: number; prompt: string; url: string
 type ImageReferenceSource = { url: string; kind: "manual" | "web"; sourcePageUrl?: string; originalImageUrl?: string; title?: string };
 type Content = {
   id: number; categoryId: number; topic: string; title: string; summary: string; body: string; extraInstructions: string; imageInstructions: string; imageReferences: string[];
-  imageReferenceSources: ImageReferenceSource[]; status: string; publishNote: string; createdAt: string; updatedAt: string; category: Category; blocks: Block[]; images?: ContentImage[];
+  imageReferenceSources: ImageReferenceSource[]; hashtags: string[]; status: string; publishNote: string; createdAt: string; updatedAt: string; category: Category; blocks: Block[]; images?: ContentImage[];
 };
 type Settings = { globalMemory: string; globalImageMemory: string; cliCommand: string; cliExtraArgs: string; naverBlogId: string; chromeDebugUrl: string; autoWebReferences: boolean };
 type Data = { settings: Settings; categories: Category[]; templates: Template[]; personas: Persona[]; contents: Content[] };
@@ -93,7 +93,7 @@ function getPublishingPlan(content: Content) {
     hasFaq: /(^|\n)\s*(?:Q\.?\s*\d*|자주 묻는 질문)/im.test(fullText),
     layout: medical ? "정보 설명형" : portfolio ? "포토 포트폴리오형" : insight ? "인사이트형" : "생활 스토리형",
     imageGuide: portfolio ? "공간·단계별 전후 흐름으로 배치" : "설정한 블록 위치에 본문과 함께 배치",
-    stickerGuide: medical ? "의료 정보형이라 사용하지 않음" : portfolio ? "공간 전환 사이 1~2회 선택" : "첫 이미지 뒤 1회만 추천",
+    stickerGuide: medical ? "도입 뒤 차분한 스티커 1회" : portfolio ? "첫 장면 뒤 스티커 1회" : "도입 뒤 스티커 1회",
   };
 }
 
@@ -101,13 +101,14 @@ function PublishingBlueprint({ content }: { content: Content }) {
   const plan = getPublishingPlan(content);
   return <section className="publishing-blueprint">
     <div className="blueprint-head"><div><span>발행 설계</span><h3>네이버 게시 연출 지도</h3></div><em>{plan.layout}</em></div>
-    <p className="blueprint-help">본문 미리보기는 실제 게시 순서로 붙여 보여줍니다. 점선 항목은 네이버 편집기에서 더할 최종 연출 추천입니다.</p>
+    <p className="blueprint-help">미리보기와 게시 준비에 같은 연출 순서를 적용합니다.</p>
     <ol>
       <li><i>1</i><div><b>제목과 첫 장면</b><span>검색어를 담은 제목 뒤, 독자의 구체적인 상황으로 시작</span></div></li>
       <li><i>2</i><div><b>짧은 문단 {plan.paragraphCount}개</b><span>모바일에서 한 덩어리로 보이지 않게 호흡을 분리</span></div></li>
       <li><i>3</i><div><b>이미지 {plan.imageCount}장</b><span>{plan.imageCount ? plan.imageGuide : "아직 생성된 이미지가 없습니다"}</span></div></li>
       {plan.headings.length > 0 && <li><i>4</i><div><b>자연스러운 소제목 {plan.headings.length}개</b><span>{plan.headings.slice(0, 3).join(" · ")}</span></div></li>}
-      <li className="recommendation"><i>+</i><div><b>네이버 스티커</b><span>{plan.stickerGuide}</span></div></li>
+      <li className="recommendation ready"><i>✓</i><div><b>네이버 스티커</b><span>{plan.stickerGuide}</span></div></li>
+      <li className="recommendation ready"><i>#</i><div><b>해시태그 {content.hashtags.length}개</b><span>본문 마지막에 자동 입력</span></div></li>
     </ol>
     <div className="blueprint-signals"><span className={plan.hasChecklist ? "ready" : ""}>체크리스트 {plan.hasChecklist ? "반영" : "선택"}</span><span className={plan.hasFaq ? "ready" : ""}>FAQ {plan.hasFaq ? "반영" : "선택"}</span><span>과장 없는 결론</span></div>
   </section>;
@@ -126,8 +127,9 @@ function NaverStylePreview({ content }: { content: Content }) {
         return images.length ? <div className="naver-image-group" key={block.id || index}>{images.map((image) => <BlogImage key={image.id} image={image} alt={`${block.label} 이미지`} />)}</div> : null;
       }
       const showHeading = headingTypes.has(block.type) && !internalLabels.has(block.label.trim());
-      return <section key={block.id || index}>{showHeading && <h2>{block.label}</h2>}<BlogText text={block.text || ""} /></section>;
-    })}</div>
+      const isFirstText = content.blocks.findIndex((item) => item.type !== "image" && item.text?.trim()) === index;
+      return <section key={block.id || index}>{showHeading && <blockquote className="naver-quote-heading"><span>POINT {String(index + 1).padStart(2, "0")}</span><b>{block.label}</b></blockquote>}<BlogText text={block.text || ""} />{isFirstText && <div className="naver-sticker-preview" aria-label="네이버 스티커 배치"><span>✨</span><b>여기서 잠깐!</b><small>도입 뒤 스티커 1회</small></div>}</section>;
+    })}{content.hashtags.length > 0 && <div className="naver-hashtags">{content.hashtags.map((tag) => <span key={tag}>#{tag}</span>)}</div>}</div>
   </article>;
 }
 
@@ -435,6 +437,7 @@ function PreviewModal({ content, data, onClose, onSaved, flash }: { content: Con
     </section><aside className="preview-info"><PublishingBlueprint content={draft} /><h3 className="info-heading">글 정보</h3>
       <label>카테고리<select value={draft.categoryId} onChange={(event) => { const categoryId = Number(event.target.value); setDraft({ ...draft, categoryId, category: data.categories.find((category) => category.id === categoryId)! }); }}>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
       <label>주제<textarea rows={4} value={draft.topic} onChange={(event) => setDraft({ ...draft, topic: event.target.value })} /></label>
+      <label>해시태그<input value={draft.hashtags.join(" ")} onChange={(event) => setDraft({ ...draft, hashtags: [...new Set(event.target.value.split(/[\s,]+/).map((tag) => tag.replace(/^#+/, "").replace(/[^0-9A-Za-z가-힣_]/g, "")).filter(Boolean))].slice(0, 12) })} placeholder="스마일라식 시력교정 안과검사" /><small className="field-help">띄어쓰기로 구분 · 게시글 마지막에 자동 입력</small></label>
       {draft.extraInstructions.startsWith("[페르소나:") && <div className="applied-persona"><span>적용 페르소나</span><b>{draft.extraInstructions.match(/^\[페르소나:\s*([^\]]+)\]/)?.[1]}</b><p>{draft.extraInstructions.replace(/^\[페르소나:[^\]]+\]\s*/, "")}</p></div>}
       <div className={`preview-references ${draft.imageReferences.length ? "" : "empty"}`}><b>이미지 레퍼런스 출처</b>{draft.imageReferences.length > 0 ? <><div>{draft.imageReferences.map((url, index) => { const source = (draft.imageReferenceSources || []).find((item) => item.url === url); return <figure key={url}><img src={url} alt={`적용 중인 레퍼런스 ${index + 1}`} /><figcaption><strong>{source?.kind === "web" ? sourceHost(source.sourcePageUrl || source.originalImageUrl) : "사용자 제공"}</strong>{source?.title && <span title={source.title}>{source.title}</span>}<nav>{source?.sourcePageUrl && <a href={source.sourcePageUrl} target="_blank" rel="noreferrer">출처 페이지</a>}{source?.originalImageUrl && <a href={source.originalImageUrl} target="_blank" rel="noreferrer">원본 이미지</a>}{source?.kind === "web" && !source.sourcePageUrl && !source.originalImageUrl && <em>출처 미기록</em>}</nav></figcaption></figure>; })}</div><small>자동 선정된 웹 이미지는 출처 링크를 보존합니다. 원본을 게시하지 않고 생성 참고용으로만 사용합니다.</small></> : <div className="reference-source-empty"><strong>참고한 외부 이미지 없음</strong><span>이 글의 이미지는 저장된 웹·사용자 레퍼런스 없이 글 내용과 이미지 지침만으로 생성됐습니다.</span></div>}</div>
       <div className="image-generator"><div><span className="image-badge">추가 생성</span><h3>이미지 추가 제작</h3><p>{imageBlocks.length ? `구조 템플릿에 지정된 ${imageBlocks.length}개 위치를 기준으로 추가 시안을 만들어요.` : "저장된 글의 제목과 본문을 읽고 이미지를 추가해요."}</p></div>{imageBlocks.length > 0 && <div className="detected-positions"><b>템플릿 이미지 위치</b>{imageBlocks.map((block, index) => <span key={block.id || index}>{index + 1}. {block.label}</span>)}</div>}<label>추가할 이미지 수<select value={imageCount} onChange={(event) => setImageCount(Number(event.target.value))}><option value={1}>1장</option><option value={2}>2장</option><option value={3}>3장</option><option value={4}>4장</option><option value={5}>5장</option></select></label><label>스타일<select value={imageStyle} onChange={(event) => setImageStyle(event.target.value)}><option value="clean">깔끔한 에디토리얼</option><option value="photo">사실적인 사진</option><option value="illustration">친근한 일러스트</option><option value="infographic">미니멀 인포그래픽</option></select></label>{imageWorking && <div className="image-progress"><div><span style={{ width: `${(imageProgress / imageCount) * 100}%` }} /></div><b>{imageProgress}/{imageCount}번째 이미지 제작 중</b></div>}<button className="primary image-generate-button" onClick={generateImages} disabled={imageWorking}>{imageWorking ? `${imageProgress}/${imageCount}번째 제작 중…` : `${imageCount}장 추가 생성`}</button><small>처음 생성할 이미지 수와 지침은 새 콘텐츠 탭에서 정합니다.</small></div>
