@@ -50,9 +50,54 @@ export async function getPersonas() {
   return db.$queryRawUnsafe<StoredPersona[]>(`SELECT * FROM "Persona" ORDER BY "createdAt" ASC, "id" ASC`);
 }
 
+export type StoredPersonaResearch = {
+  id: number;
+  name: string;
+  keywords: string;
+  targetCount: number;
+  sampledCount: number;
+  status: "queued" | "collecting" | "analyzing" | "completed" | "failed";
+  summary: string;
+  error: string;
+  personaId: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function ensurePersonaResearchTables() {
+  await ensurePersonaTable();
+  await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PersonaResearch" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "name" TEXT NOT NULL,
+    "keywords" TEXT NOT NULL,
+    "targetCount" INTEGER NOT NULL DEFAULT 100,
+    "sampledCount" INTEGER NOT NULL DEFAULT 0,
+    "status" TEXT NOT NULL DEFAULT 'queued',
+    "summary" TEXT NOT NULL DEFAULT '',
+    "error" TEXT NOT NULL DEFAULT '',
+    "personaId" INTEGER,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PersonaResearch_personaId_fkey" FOREIGN KEY ("personaId") REFERENCES "Persona"("id") ON DELETE SET NULL ON UPDATE CASCADE
+  )`);
+  try { await db.$executeRawUnsafe(`ALTER TABLE "PersonaResearch" ADD COLUMN "summary" TEXT NOT NULL DEFAULT ''`); } catch { /* Column already exists. */ }
+  await db.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "PersonaResearchSource" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "researchId" INTEGER NOT NULL,
+    "blogId" TEXT NOT NULL,
+    "title" TEXT NOT NULL DEFAULT '',
+    "url" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PersonaResearchSource_researchId_fkey" FOREIGN KEY ("researchId") REFERENCES "PersonaResearch"("id") ON DELETE CASCADE ON UPDATE CASCADE
+  )`);
+  await db.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "PersonaResearchSource_researchId_blogId_key" ON "PersonaResearchSource"("researchId", "blogId")`);
+  await db.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "PersonaResearch_status_updatedAt_idx" ON "PersonaResearch"("status", "updatedAt")`);
+}
+
 export async function ensureSeed() {
   await ensureGuidanceColumns();
   await ensurePersonaTable();
+  await ensurePersonaResearchTables();
   await db.appSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, globalMemory: defaultGuides.globalMemory.join("\n"), globalImageMemory: defaultGuides.globalImageMemory.join("\n") } });
   if ((await db.category.count()) === 0) {
     await db.category.createMany({ data: starterCategories });

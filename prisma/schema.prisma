@@ -25,6 +25,37 @@ model Persona {
   instruction String   @default("")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  research    PersonaResearch[]
+}
+
+model PersonaResearch {
+  id           Int      @id @default(autoincrement())
+  name         String
+  keywords     String
+  targetCount  Int      @default(100)
+  sampledCount Int      @default(0)
+  status       String   @default("queued")
+  summary      String   @default("")
+  error        String   @default("")
+  personaId    Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  persona      Persona? @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  sources      PersonaResearchSource[]
+
+  @@index([status, updatedAt])
+}
+
+model PersonaResearchSource {
+  id         Int             @id @default(autoincrement())
+  researchId Int
+  blogId     String
+  title      String          @default("")
+  url        String
+  createdAt  DateTime        @default(now())
+  research   PersonaResearch @relation(fields: [researchId], references: [id], onDelete: Cascade)
+
+  @@unique([researchId, blogId])
 }
 
 model Category {

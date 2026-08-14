@@ -22,6 +22,13 @@ export type GeneratedArticle = {
   blocks: Array<{ type: string; label: string; text: string }>;
 };
 
+export type PersonaStyleSample = {
+  blogId: string;
+  title: string;
+  url: string;
+  text: string;
+};
+
 export interface AiAdapter {
   generate(input: GenerateInput): Promise<GeneratedArticle>;
   regenerateBlock(input: GenerateInput & { currentTitle: string; targetIndex: number; currentBlocks: GeneratedArticle["blocks"] }): Promise<{ text: string }>;

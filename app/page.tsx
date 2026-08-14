@@ -6,6 +6,10 @@ type Category = { id: number; name: string; memory: string; imageMemory: string;
 type Block = { id?: number; type: string; label: string; instruction: string; text?: string; sortOrder?: number };
 type Template = { id: number; name: string; description: string; blocks: Block[] };
 type Persona = { id: number; name: string; instruction: string };
+type PersonaResearch = {
+  id: number; name: string; keywords: string; targetCount: number; sampledCount: number; status: "queued" | "collecting" | "analyzing" | "completed" | "failed";
+  summary: string; error: string; personaId: number | null; persona?: Persona | null; sources: Array<{ id: number; blogId: string; title: string; url: string }>;
+};
 type ContentImage = { id: number; contentId: number; prompt: string; url: string; style: string; placementOrder: number; createdAt: string };
 type ImageReferenceSource = { url: string; kind: "manual" | "web"; sourcePageUrl?: string; originalImageUrl?: string; title?: string };
 type Content = {
@@ -221,11 +225,33 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
   const [personaModal, setPersonaModal] = useState(false);
   const [personaName, setPersonaName] = useState("");
   const [personaInstruction, setPersonaInstruction] = useState("");
+  const [personaResearchKeywords, setPersonaResearchKeywords] = useState("");
+  const [personaResearch, setPersonaResearch] = useState<PersonaResearch | null>(null);
   const selectedCategory = data.categories.find((c) => c.id === categoryId) || data.categories[0];
   const selectedPersona = personas.find((persona) => persona.id === personaId);
   const selected = data.templates.find((t) => t.id === templateId);
   const [autoImageCount, setAutoImageCount] = useState(selected?.blocks.filter((block) => block.type === "image").length || 0);
   useEffect(() => { setAutoImageCount(selected?.blocks.filter((block) => block.type === "image").length || 0); }, [templateId]);
+  useEffect(() => {
+    void api<PersonaResearch | null>("/api/personas/research").then((research) => {
+      if (research) setPersonaResearch(research);
+    }).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    if (!personaResearch || !["queued", "collecting", "analyzing"].includes(personaResearch.status)) return;
+    const timer = window.setTimeout(() => {
+      void api<PersonaResearch>(`/api/personas/research/${personaResearch.id}`).then((research) => {
+        setPersonaResearch(research);
+        if (research.status === "completed" && research.persona) {
+          setPersonas((current) => [...current.filter((persona) => persona.id !== research.persona!.id), research.persona!]);
+          setPersonaId(research.persona.id);
+          setPersonaInstruction(research.persona.instruction);
+          flash(`${research.sampledCount}명의 글을 분석해 페르소나를 완성했습니다.`);
+        }
+      }).catch((error) => flash((error as Error).message));
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [personaResearch, flash]);
   const uploadReferenceFiles = async (files: File[]) => {
     const available = 5 - imageReferences.length;
     const images = files.filter((file) => file.type.startsWith("image/")).slice(0, available);
@@ -251,8 +277,17 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
   }, [imageReferences.length]);
   const addPersona = async () => {
     try {
-      const created = await api<Persona>("/api/personas", { method: "POST", body: JSON.stringify({ name: personaName, instruction: personaInstruction }) });
-      setPersonas([...personas, created]); setPersonaId(created.id); setPersonaModal(false); setPersonaName(""); setPersonaInstruction(""); flash("페르소나를 추가했습니다.");
+      const existing = personas.find((persona) => persona.name.trim() === personaName.trim());
+      const created = await api<Persona>(existing ? `/api/personas/${existing.id}` : "/api/personas", { method: existing ? "PUT" : "POST", body: JSON.stringify({ name: personaName, instruction: personaInstruction }) });
+      setPersonas([...personas.filter((persona) => persona.id !== created.id), created]); setPersonaId(created.id); setPersonaModal(false); setPersonaName(""); setPersonaInstruction(""); flash(existing ? "페르소나 지침을 수정했습니다." : "페르소나를 추가했습니다.");
+    } catch (error) { flash((error as Error).message); }
+  };
+  const researchPersona = async () => {
+    if (!personaName.trim() || !personaResearchKeywords.trim()) return flash("페르소나 이름과 연구 키워드를 입력해 주세요.");
+    try {
+      const research = await api<PersonaResearch>("/api/personas/research", { method: "POST", body: JSON.stringify({ name: personaName, keywords: personaResearchKeywords, targetCount: 100 }) });
+      setPersonaResearch(research);
+      flash("검색 상위 공개 글 100명 연구를 시작했습니다. 창을 닫아도 계속 진행됩니다.");
     } catch (error) { flash((error as Error).message); }
   };
   const removePersona = async () => {
@@ -298,7 +333,7 @@ function CreatePanel({ data, onManageMemory, onCreated, busy, setBusy, flash }: 
       <div className="create-image-count"><div><b>이미지 자동 생성</b><small>글과 함께 만들 이미지 수를 선택하세요.</small></div><select value={autoImageCount} onChange={(event) => setAutoImageCount(Number(event.target.value))}><option value={0}>생성 안 함</option><option value={1}>1장</option><option value={2}>2장</option><option value={3}>3장</option><option value={4}>4장</option><option value={5}>5장</option></select></div>
       <button className="primary generate" onClick={generate} disabled={!!busy}>✦ 콘텐츠 생성하기</button><small className="center-note">생성 결과는 자동 게시되지 않고 보관함에 저장됩니다.</small>
     </div>
-  </section>{personaModal && <div className="instruction-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPersonaModal(false); }}><div className="instruction-modal persona-modal"><header><div><span>재사용 가능한 글쓴이 설정</span><h2>새 페르소나 추가</h2><p>이름과 말투, 관점, 전문성의 범위를 자유롭게 적어주세요.</p></div><button type="button" onClick={() => setPersonaModal(false)}>×</button></header><label>페르소나 이름<input autoFocus value={personaName} onChange={(event) => setPersonaName(event.target.value)} placeholder="예: 친절한 병원 정보 에디터" /></label><label>페르소나 지침<textarea value={personaInstruction} onChange={(event) => setPersonaInstruction(event.target.value)} placeholder="예: 비의료인의 위치를 지키면서 어려운 의료 정보를 쉬운 해요체로 설명합니다. 핵심 답을 먼저 주고 과장이나 체험담은 만들지 않습니다." /></label><footer><span>{personaInstruction.length.toLocaleString()}자</span><div><button type="button" className="secondary" onClick={() => setPersonaModal(false)}>닫기</button><button type="button" className="primary" onClick={addPersona}>저장</button></div></footer></div></div>}</>;
+  </section>{personaModal && <div className="instruction-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setPersonaModal(false); }}><div className="instruction-modal persona-modal"><header><div><span>재사용 가능한 글쓴이 설정</span><h2>새 페르소나 추가</h2><p>직접 지침을 쓰거나 검색 상위 공개 글 100명을 연구해 자동으로 만들 수 있어요.</p></div><button type="button" onClick={() => setPersonaModal(false)}>×</button></header><div className="persona-modal-body"><label>페르소나 이름<input autoFocus value={personaName} onChange={(event) => setPersonaName(event.target.value)} placeholder="예: 뷰티 블로거" /></label><label>직접 작성할 페르소나 지침 <span className="optional">선택</span><textarea value={personaInstruction} onChange={(event) => setPersonaInstruction(event.target.value)} placeholder="직접 만든 전체 프롬프트가 있다면 그대로 붙여 넣으세요." /></label><section className="persona-research-box"><div><span>크롬 검색 기반 자동 연구</span><b>상위 공개 글 100명에서 문체 패턴 만들기</b><small>쉼표로 주제를 나눠 적으면 서로 다른 검색 결과를 비교해요. 원문은 저장하지 않고 출처와 추상화된 패턴만 남깁니다.</small></div><label>연구 키워드<input value={personaResearchKeywords} onChange={(event) => setPersonaResearchKeywords(event.target.value)} placeholder="예: 스킨케어 리뷰, 메이크업, 피부관리, 뷰티 일상" /></label><button type="button" className="research-start" onClick={researchPersona} disabled={!!personaResearch && ["queued", "collecting", "analyzing"].includes(personaResearch.status)}>100명 연구 시작</button>{personaResearch && <div className={`research-progress ${personaResearch.status}`}><div><b>{personaResearch.status === "queued" ? "연구 준비 중" : personaResearch.status === "collecting" ? `${personaResearch.sampledCount}/${personaResearch.targetCount}명 글 확인 중` : personaResearch.status === "analyzing" ? `${personaResearch.sampledCount}명 문체 종합 중` : personaResearch.status === "completed" ? "페르소나 완성" : "연구 중단"}</b><span>{Math.min(100, Math.round((personaResearch.sampledCount / personaResearch.targetCount) * 100))}%</span></div><i><em style={{ width: `${personaResearch.status === "analyzing" || personaResearch.status === "completed" ? 100 : Math.min(100, (personaResearch.sampledCount / personaResearch.targetCount) * 100)}%` }} /></i>{personaResearch.summary && <p>{personaResearch.summary}</p>}{personaResearch.error && <p className="research-error">{personaResearch.error}</p>}{personaResearch.sources.length > 0 && <details><summary>확인한 출처 {personaResearch.sources.length}개 보기</summary><div>{personaResearch.sources.map((source) => <a key={source.id} href={source.url} target="_blank" rel="noreferrer">{source.title || source.blogId}</a>)}</div></details>}</div>}</section></div><footer><span>{personaInstruction.length.toLocaleString()}자</span><div><button type="button" className="secondary" onClick={() => setPersonaModal(false)}>닫기</button><button type="button" className="primary" onClick={addPersona} disabled={!personaInstruction.trim()}>직접 저장</button></div></footer></div></div>}</>;
 }
 
 function MemoryPanel({ data, onRefresh, flash }: { data: Data; onRefresh: () => Promise<void>; flash: (v: string) => void }) {
