@@ -203,9 +203,9 @@ function Library({ data, contents, search, setSearch, filterCategory, setFilterC
     </div>
     <div className="panel table-panel">
       <div className="panel-heading"><div><h2>저장된 콘텐츠</h2><p>생성한 글을 검토하고 발행 준비 상태로 옮기세요.</p></div><div className="filters"><input className="search" placeholder="제목이나 주제 검색" value={search} onChange={(e) => setSearch(e.target.value)} /><select value={filterCategory} onChange={(e) => setFilterCategory(Number(e.target.value))}><option value={0}>모든 카테고리</option>{data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div></div>
-      {contents.length ? <div className="table-wrap"><table><thead><tr><th>날짜</th><th>카테고리</th><th>주제와 제목</th><th>본문 요약</th><th>상태</th><th /></tr></thead><tbody>{contents.map((content) => <tr key={content.id}>
+      {contents.length ? <div className="table-wrap"><table><thead><tr><th>날짜</th><th>카테고리</th><th>주제 · 제목</th><th>상태</th><th /></tr></thead><tbody>{contents.map((content) => <tr key={content.id}>
         <td className="date">{dateText(content.createdAt)}</td><td><span className={`category-pill ${content.category.color}`}>{content.category.name}</span></td>
-        <td className="title-cell"><small>{content.topic}</small><b>{content.title}</b></td><td className="summary">{content.summary || "요약이 없습니다."}</td>
+        <td><div className="title-cell"><small>{content.topic}</small><b>{content.title}</b></div></td>
         <td><span className={`status ${content.status}`}>{content.status === "publish_ready" ? "발행 준비" : "초안"}</span></td>
         <td><div className="row-actions"><button onClick={() => onPreview(content)}>미리보기</button><button onClick={() => preparePublish(content)}>게시 준비{content.images?.length ? ` · 사진 ${content.images.length}장` : ""}</button><button className="danger-text" onClick={() => remove(content)}>삭제</button></div></td>
       </tr>)}</tbody></table></div> : <div className="empty"><div>✦</div><h3>아직 저장된 콘텐츠가 없습니다</h3><p>새 콘텐츠에서 첫 글을 만들어 보세요.</p></div>}
